@@ -205,11 +205,13 @@ class Ordered_Hash_Map{
         }
     };
 
+    // Patched by Kwan (This fixes "Emplace failed: the hash table is full" bugs)
+    explicit Ordered_Hash_Map(size_t N) : node_count(0), umap(N, 0.35), head(NULL_KEY), tail(NULL_KEY) {}
 
-    explicit Ordered_Hash_Map(size_t N) :
-      node_count(0), umap(N),
-      head(NULL_KEY), tail(NULL_KEY)
-    {}
+    // explicit Ordered_Hash_Map(size_t N) :
+    //   node_count(0), umap(N),
+    //   head(NULL_KEY), tail(NULL_KEY)
+    // {}
 
     Ordered_Hash_Map(const Ordered_Hash_Map& other_ordered_hash_map) :
       node_count(0), umap(other_ordered_hash_map.umap),
