@@ -1,31 +1,34 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <chrono>
-#include <unordered_map>
 #include <iostream>
 #include <iomanip>
 
-#include "Radix_Sort.h"
-#include "Umap_with_sorter.h"
-#include "X-fast_Trie.h"
+//fastest single-threaded map candidates for all int and float types
+#include "Radix_Flat_Map.h" //fast with read-heavy workloads
+#include "Batch_N_Hash_List.h" //fast with write-heavy workloads or batch lookup only
+#include <map> //best for abstract data types
+#include "X-fast_Trie.h" //best for mixed workloads
+#include "AVL_Tree.h" //could be better for abstract data types
 
-using namespace std;
-
-// =============================== [ TRIES ] ===============================
+#include "SmallTestDataset.h" //contains no duplicates for easier debugging; has 100 truly-random size_t and strings
+using namespace std; //todo: remove when finished
 
 // PERFORMANCE SECTION
 TEST_CASE("[TRIES] Predecessor-Heavy Queries: old vs Trie method", "[tries][performance][predecessor]") {
 	constexpr size_t n = 30000;
 	constexpr size_t q = 3000;
 
-	unordered_map<size_t, int> umap;
-	umap.reserve(n);
+
+
+	//KEY is size type and VALUE is integer
+	map<size_t, int> map;
 	XFastTrie<int> xft(n);
 
 	for (size_t i = 0; i < n; i++) {
 		size_t key = i * 2;
 		int value = static_cast<int>(i);
-		umap[key] = value;
+		map[key] = value;
 		xft.insert(key, value);
 	}
 
@@ -33,18 +36,11 @@ TEST_CASE("[TRIES] Predecessor-Heavy Queries: old vs Trie method", "[tries][perf
 	size_t old_sum = 0;
 	for (size_t i = 0; i < q; i++) {
 		const size_t query = i * 3 + 1;
-		size_t best = 0;
-
-		bool found = false;
-		for (const auto &kv : umap) {
-			size_t k = kv.first;
-			if (k <= query) {
-				if (!found || k > best) best = k;
-				found = true;
-			}
+		auto iter = map.upper_bound(query);
+		if (iter != map.begin()) {
+			--iter;
+			old_sum += iter->second;
 		}
-
-		if (found) old_sum += umap[best];
 	}
 
 	const double old_elapsed = chrono::duration<double>(chrono::high_resolution_clock::now() - old_start).count();
@@ -59,6 +55,7 @@ TEST_CASE("[TRIES] Predecessor-Heavy Queries: old vs Trie method", "[tries][perf
 
 	const double trie_elapsed = chrono::duration<double>(chrono::high_resolution_clock::now() - trie_start).count();
 
+
 	cout << fixed << setprecision(3);
 	cout << "[OLD PERFORMANCE: PREDECESSOR] " << old_elapsed << " seconds\n";
 	cout << "[TRIE PERFORMANCE: PREDECESSOR] " << trie_elapsed << " seconds\n";
@@ -69,14 +66,13 @@ TEST_CASE("[TRIES] Successor-Heavy Queries: old vs Trie method", "[tries][perfor
 	constexpr size_t n = 30000;
 	constexpr size_t q = 3000;
 
-	unordered_map<size_t, int> umap;
-	umap.reserve(n);
+	map<size_t, int> map;
 	XFastTrie<int> xft(n);
 
 	for (size_t i = 0; i < n; i++) {
 		size_t key = i * 2;
 		int value = static_cast<int>(i);
-		umap[key] = value;
+		map[key] = value;
 		xft.insert(key, value);
 	}
 
@@ -86,14 +82,14 @@ TEST_CASE("[TRIES] Successor-Heavy Queries: old vs Trie method", "[tries][perfor
 		const size_t query = i * 3 + 1;
 		size_t best = std::numeric_limits<size_t>::max();
 		bool found = false;
-		for (const auto &kv : umap) {
+		for (const auto &kv : map) {
 			size_t k = kv.first;
 			if (k >= query) {
 				if (!found || k < best) best = k;
 				found = true;
 			}
 		}
-		if (found) old_sum += umap[best];
+		if (found) old_sum += map[best];
 	}
 	const double old_elapsed = chrono::duration<double>(chrono::high_resolution_clock::now() - old_start).count();
 
@@ -116,8 +112,7 @@ TEST_CASE("[TRIES] Range Count Queries: old vs Trie method", "[tries][performanc
 	constexpr size_t n = 30000;
 	constexpr size_t q = 2000;
 
-	unordered_map<size_t, int> umap;
-	umap.reserve(n);
+	map<size_t, int> umap;
 	XFastTrie<int> xft(n);
 
 	for (size_t i = 0; i < n; i++) {
@@ -166,14 +161,13 @@ TEST_CASE("[TRIES] Mixed Neighbor Queries: old vs Trie method", "[tries][perform
 	constexpr size_t n = 30000;
 	constexpr size_t q = 3000;
 
-	unordered_map<size_t, int> umap;
-	umap.reserve(n);
+	map<size_t, int> map;
 	XFastTrie<int> xft(n);
 
 	for (size_t i = 0; i < n; i++) {
 		size_t key = i * 2;
 		int value = static_cast<int>(i);
-		umap[key] = value;
+		map[key] = value;
 		xft.insert(key, value);
 	}
 
@@ -183,13 +177,13 @@ TEST_CASE("[TRIES] Mixed Neighbor Queries: old vs Trie method", "[tries][perform
 		size_t query = i * 3 + 1;
 		size_t best_le = 0, best_ge = std::numeric_limits<size_t>::max();
 		bool has_le = false, has_ge = false;
-		for (const auto &kv : umap) {
+		for (const auto &kv : map) {
 			size_t k = kv.first;
 			if (k <= query) { if (!has_le || k > best_le) best_le = k; has_le = true; }
 			if (k >= query) { if (!has_ge || k < best_ge) best_ge = k; has_ge = true; }
 		}
-		if (has_le) old_sum += umap[best_le];
-		if (has_ge) old_sum += umap[best_ge];
+		if (has_le) old_sum += map[best_le];
+		if (has_ge) old_sum += map[best_ge];
 	}
 	const double old_elapsed = chrono::duration<double>(chrono::high_resolution_clock::now() - old_start).count();
 
