@@ -2,17 +2,18 @@
 // Created by urani on 10/14/2025.
 //
 
-#ifndef ORDERED_HASH_MAP_H
-#define ORDERED_HASH_MAP_H
+#ifndef Doubly_Linked_Hash_Map_H
+#define Doubly_Linked_Hash_Map_H
 #include <iostream>
 #include <iterator>
 #include <limits>
 #include <stdexcept>
 #include <vector>
-#include "submodules/FunnelHashMap/src/Funnel_Hash_Map.h"
+#include "Funnel_Hash_Map.h"
+//#include <unordered_map>
 
 template <typename Key, typename Value>
-class Ordered_Hash_Map{
+class Doubly_Linked_Hash_Map{
   public:
     struct NodeProps {
       Key next = NULL_KEY;
@@ -23,6 +24,7 @@ class Ordered_Hash_Map{
     static constexpr Key NULL_KEY = std::numeric_limits<Key>::max();
     size_t node_count;
     Funnel_Hash_Map<Key, NodeProps> umap;
+    //std::unordered_map<Key, NodeProps> umap;
     Key head = NULL_KEY;
     Key tail = NULL_KEY;
   public:
@@ -38,12 +40,12 @@ class Ordered_Hash_Map{
         using reference         = Value&;
 
     private:
-        Ordered_Hash_Map* map_ptr;
+        Doubly_Linked_Hash_Map* map_ptr;
         Key curr_key;
-        iterator(Ordered_Hash_Map* map, Key key) : map_ptr(map), curr_key(key) {}
+        iterator(Doubly_Linked_Hash_Map* map, Key key) : map_ptr(map), curr_key(key) {}
 
-        // Allow Ordered_Hash_Map and const_iterator to access private members
-        friend class Ordered_Hash_Map;
+        // Allow Doubly_Linked_Hash_Map and const_iterator to access private members
+        friend class Doubly_Linked_Hash_Map;
         friend class const_iterator;
 
     public:
@@ -124,13 +126,13 @@ class Ordered_Hash_Map{
         using reference         = const Value&;
 
     private:
-        const Ordered_Hash_Map* map_ptr;
+        const Doubly_Linked_Hash_Map* map_ptr;
         Key curr_key;
 
-        const_iterator(const Ordered_Hash_Map* map, Key key) : map_ptr(map), curr_key(key) {}
+        const_iterator(const Doubly_Linked_Hash_Map* map, Key key) : map_ptr(map), curr_key(key) {}
 
-        // Allow Ordered_Hash_Map and iterator to access private members
-        friend class Ordered_Hash_Map;
+        // Allow Doubly_Linked_Hash_Map and iterator to access private members
+        friend class Doubly_Linked_Hash_Map;
         friend class iterator;
 
     public:
@@ -206,37 +208,38 @@ class Ordered_Hash_Map{
     };
 
     // Patched by Kwan (This fixes "Emplace failed: the hash table is full" bugs)
-    explicit Ordered_Hash_Map(size_t N) : node_count(0), umap(N, 0.35), head(NULL_KEY), tail(NULL_KEY) {}
+    //explicit Doubly_Linked_Hash_Map(size_t N) : node_count(0), umap(N, 0.9), head(NULL_KEY), tail(NULL_KEY) {}
+    explicit Doubly_Linked_Hash_Map(size_t N) : node_count(0), umap(N), head(NULL_KEY), tail(NULL_KEY) {}
 
-    // explicit Ordered_Hash_Map(size_t N) :
+    // explicit Doubly_Linked_Hash_Map(size_t N) :
     //   node_count(0), umap(N),
     //   head(NULL_KEY), tail(NULL_KEY)
     // {}
 
-    Ordered_Hash_Map(const Ordered_Hash_Map& other_ordered_hash_map) :
-      node_count(0), umap(other_ordered_hash_map.umap),
+    Doubly_Linked_Hash_Map(const Doubly_Linked_Hash_Map& other_Doubly_Linked_Hash_Map) :
+      node_count(0), umap(other_Doubly_Linked_Hash_Map.umap),
       head(NULL_KEY), tail(NULL_KEY)
     {
-      Key nav_node = other_ordered_hash_map.getHead();
-      for(size_t i = 0; i<other_ordered_hash_map.nodeCount(); i++){
-        this->addTail(nav_node,other_ordered_hash_map.umap.find(nav_node)->second.value);
-        nav_node = other_ordered_hash_map.umap.find(nav_node)->second.next;
+      Key nav_node = other_Doubly_Linked_Hash_Map.getHead();
+      for(size_t i = 0; i<other_Doubly_Linked_Hash_Map.nodeCount(); i++){
+        this->addTail(nav_node,other_Doubly_Linked_Hash_Map.umap.find(nav_node)->second.value);
+        nav_node = other_Doubly_Linked_Hash_Map.umap.find(nav_node)->second.next;
       }
     }
 
-    Ordered_Hash_Map& operator=(const Ordered_Hash_Map& other_ordered_hash_map){
-      if(this != &other_ordered_hash_map){
+    Doubly_Linked_Hash_Map& operator=(const Doubly_Linked_Hash_Map& other_Doubly_Linked_Hash_Map){
+      if(this != &other_Doubly_Linked_Hash_Map){
         clear(); //convert linked list to default
-        Key nav_node = other_ordered_hash_map.getHead();
-        for(size_t i = 0; i<other_ordered_hash_map.nodeCount(); i++){
-          this->addTail(nav_node, other_ordered_hash_map.umap.find(nav_node)->second.value);
-          nav_node = other_ordered_hash_map.umap.find(nav_node)->second.next;
+        Key nav_node = other_Doubly_Linked_Hash_Map.getHead();
+        for(size_t i = 0; i<other_Doubly_Linked_Hash_Map.nodeCount(); i++){
+          this->addTail(nav_node, other_Doubly_Linked_Hash_Map.umap.find(nav_node)->second.value);
+          nav_node = other_Doubly_Linked_Hash_Map.umap.find(nav_node)->second.next;
         }
       }
       return *this;
     }
 
-    ~Ordered_Hash_Map(){
+    ~Doubly_Linked_Hash_Map(){
       clear();
     }
 
@@ -287,7 +290,8 @@ class Ordered_Hash_Map{
     }
 
     iterator find(const Key& key) {
-        if (umap.contains(key)) {
+        //if (umap.contains(key)) {
+        if(umap.find(key) != umap.end()){
             return iterator(this, key);
         }
         return end();
@@ -308,7 +312,8 @@ class Ordered_Hash_Map{
     }
 
     bool contains(const Key& key) const {
-        return umap.contains(key);
+        //return umap.contains(key);
+        return umap.find(key) != umap.end();
     }
 
     std::vector<Key> findValues(const Value& value) {
@@ -370,8 +375,10 @@ class Ordered_Hash_Map{
       if (key == NULL_KEY) {
         throw std::invalid_argument("Key value is reserved and cannot be inserted.");
       }
-      if (umap.contains(key)) {
-        throw std::invalid_argument("Key already exists in the map.");
+      //if (umap.contains(key)) {
+      if(umap.find(key) != umap.end()){
+        return;
+        //throw std::invalid_argument("Key already exists in the map.");
       }
       umap.emplace(key, NodeProps{NULL_KEY, NULL_KEY, value});
       Key new_head = key;
@@ -391,7 +398,8 @@ class Ordered_Hash_Map{
       if (key == NULL_KEY) {
         throw std::invalid_argument("Key value is reserved and cannot be inserted.");
       }
-      if (umap.contains(key)) {
+      //if (umap.contains(key)) {
+      if(umap.find(key) != umap.end()){
         throw std::invalid_argument("Key already exists in the map.");
       }
       umap.emplace(key, NodeProps{NULL_KEY, NULL_KEY, value});
@@ -413,10 +421,12 @@ class Ordered_Hash_Map{
       if (key == NULL_KEY) {
         throw std::invalid_argument("Key value is reserved and cannot be inserted.");
       }
-      if (umap.contains(key)) {
+      //if (umap.contains(key)) {
+      if(umap.find(key) != umap.end()){
         throw std::invalid_argument("Key already exists in the map.");
       }
-      if (!umap.contains(some_node)) {
+      //if (!umap.contains(some_node)) {
+      if(umap.find(some_node) == umap.end()){
         throw std::out_of_range("Node to insert before does not exist.");
       }
 
@@ -442,10 +452,12 @@ class Ordered_Hash_Map{
       if (key == NULL_KEY) {
         throw std::invalid_argument("Key value is reserved and cannot be inserted.");
       }
-      if (umap.contains(key)) {
+      //if (umap.contains(key)) {
+      if(umap.find(key) != umap.end()){
         throw std::invalid_argument("Key already exists in the map.");
       }
-      if (!umap.contains(some_node)) {
+      //if (!umap.contains(some_node)) {
+      if(umap.find(some_node) == umap.end()){
         throw std::out_of_range("Node to insert after does not exist.");
       }
 
@@ -621,25 +633,25 @@ class Ordered_Hash_Map{
     }
 
 
-    bool operator==(const Ordered_Hash_Map& other_ordered_hash_map) const {
-      if(this->node_count != other_ordered_hash_map.nodeCount()){
+    bool operator==(const Doubly_Linked_Hash_Map& other_Doubly_Linked_Hash_Map) const {
+      if(this->node_count != other_Doubly_Linked_Hash_Map.nodeCount()){
         return false;
       }
       Key nav_node = this->head;
-      Key other_nav_node = other_ordered_hash_map.getHead();
+      Key other_nav_node = other_Doubly_Linked_Hash_Map.getHead();
       for(size_t i = 0; i<node_count; i++){
-        if(umap.find(nav_node)->second.value != other_ordered_hash_map.umap.find(other_nav_node)->second.value){
+        if(umap.find(nav_node)->second.value != other_Doubly_Linked_Hash_Map.umap.find(other_nav_node)->second.value){
           return false;
         }
         nav_node = umap.find(nav_node)->second.next;
-        other_nav_node = other_ordered_hash_map.umap.find(other_nav_node)->second.next;
+        other_nav_node = other_Doubly_Linked_Hash_Map.umap.find(other_nav_node)->second.next;
       }
       return true;
     }
 
-    bool operator!=(const Ordered_Hash_Map& other_ordered_hash_map) const {
-      return !(*this == other_ordered_hash_map);
+    bool operator!=(const Doubly_Linked_Hash_Map& other_Doubly_Linked_Hash_Map) const {
+      return !(*this == other_Doubly_Linked_Hash_Map);
     }
 
 };
-#endif //ORDERED_HASH_MAP_H
+#endif //Doubly_Linked_Hash_Map_H
