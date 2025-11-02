@@ -12,6 +12,7 @@
 #include <map> //best for abstract data types
 #include "X-fast_Trie.h" //best for mixed workloads
 #include "AVL_Tree.h" //could be better for abstract data types
+#include "Treap.h" //lowest constant factors
 
 sf::VertexArray createPlot(const std::vector<sf::Vector2f>& points, float max_x, float max_y,
 						   const sf::Color& color, float width, float height, float padding) {
@@ -20,7 +21,7 @@ sf::VertexArray createPlot(const std::vector<sf::Vector2f>& points, float max_x,
 	float plotHeight = height - 2 * padding;
 
 	for (const auto& p : points) {
-		// Scale and shift coordinates to fit the plot area
+		// Scale and shift coordinaates to fit the plot area
 		float x = padding + (p.x / max_x) * plotWidth;
 		float y = padding + plotHeight - (p.y / max_y) * plotHeight; // Y is inverted
 		plot.append(sf::Vertex(sf::Vector2f(x, y), color));
@@ -30,7 +31,7 @@ sf::VertexArray createPlot(const std::vector<sf::Vector2f>& points, float max_x,
 
 int main(){
 	// Performance graph (insertion - size_t)
-	constexpr size_t Xpoint_MAX = 20000;
+	constexpr size_t Xpoint_MAX = 40000;
 	constexpr size_t STRIDE = 1000;
 	std::vector<sf::Vector2f> stl_points;
 	std::vector<sf::Vector2f> rf_points;
@@ -38,6 +39,7 @@ int main(){
 	std::vector<sf::Vector2f> bnhl_points;
 	std::vector<sf::Vector2f> xft_points;
 	std::vector<sf::Vector2f> avl_points;
+	std::vector<sf::Vector2f> treap_points;
 
 	double max_elapsed = 0.000001; // Avoid division by zero, start with a tiny value
 
@@ -51,6 +53,7 @@ int main(){
 		Batch_N_Hash_List<size_t,int> bnhl(i);
 		XFastTrie<size_t,int> xft(i);
 		AVL_Tree<size_t,int> hash_avl_tree(i);
+		Treap<size_t,int> treap;
 
 		// Init dataset
 		RandomDatasetGenerator rand_dataset(i);
@@ -112,6 +115,15 @@ int main(){
 		elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
 		avl_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
 		if (elapsed > max_elapsed) max_elapsed = elapsed;
+
+		// Treap (pink)
+		start = std::chrono::high_resolution_clock::now();
+		for (size_t j = 0; j < i; j++) {
+			treap.insert(rand_dataset.random_size_ts[j], rand_dataset.random_ints[j]);
+		}
+		elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+		treap_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+		if (elapsed > max_elapsed) max_elapsed = elapsed;
 	}
 
 
@@ -133,6 +145,7 @@ int main(){
     sf::VertexArray plot_bnhl = createPlot(bnhl_points, max_x, max_y, sf::Color::Cyan, WIN_WIDTH, WIN_HEIGHT, PADDING);
     sf::VertexArray plot_xft = createPlot(xft_points, max_x, max_y, sf::Color::Yellow, WIN_WIDTH, WIN_HEIGHT, PADDING);
     sf::VertexArray plot_avl = createPlot(avl_points, max_x, max_y, sf::Color::Magenta, WIN_WIDTH, WIN_HEIGHT, PADDING);
+    sf::VertexArray plot_treap = createPlot(treap_points, max_x, max_y, sf::Color(255, 192, 203), WIN_WIDTH, WIN_HEIGHT, PADDING); // Pink
 
     // --- Create Axes ---
     sf::VertexArray axes(sf::Lines);
@@ -162,7 +175,7 @@ int main(){
 
     // --- Create Labels ---
     sf::Text title, y_label, x_label, max_y_label, max_x_label;
-    sf::Text legend_stl, legend_rf, legend_rf_batch, legend_bnhl, legend_xft, legend_avl;
+    sf::Text legend_stl, legend_rf, legend_rf_batch, legend_bnhl, legend_xft, legend_avl, legend_treap;
 
     if (font_loaded) {
         title.setFont(font);
@@ -233,6 +246,12 @@ int main(){
         legend_avl.setCharacterSize(12);
         legend_avl.setPosition(legend_x, legend_y + 100);  // Shifted down
         legend_avl.setFillColor(sf::Color::Magenta);
+
+        legend_treap.setFont(font);
+        legend_treap.setString("Pink: Treap");
+        legend_treap.setCharacterSize(12);
+        legend_treap.setPosition(legend_x, legend_y + 120);  // Shifted down
+        legend_treap.setFillColor(sf::Color(255, 192, 203));
     }
 
     // --- 3. Main SFML Loop ---
@@ -252,6 +271,7 @@ int main(){
         window.draw(plot_bnhl);
         window.draw(plot_xft);
         window.draw(plot_avl);
+        window.draw(plot_treap);
 
         // Draw UI
         window.draw(axes);
@@ -267,6 +287,7 @@ int main(){
             window.draw(legend_bnhl);
             window.draw(legend_xft);
             window.draw(legend_avl);
+            window.draw(legend_treap);
         }
 
         window.display();
