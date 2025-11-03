@@ -3,16 +3,18 @@
 #include <string>
 #include <vector>
 #include <iomanip>
+#include <sstream>
 #include "RandomDatasetGenerator.h"
 #include <SFML/Graphics.hpp>
 
-//fastest single-threaded map candidates for all int and float types
-#include "Radix_Flat_Map.h" //fast with read-heavy workloads
-#include "Batch_N_Hash_List.h" //fast with write-heavy workloads or batch lookup only
-#include <map> //best for abstract data types
-#include "X-fast_Trie.h" //best for mixed workloads
-#include "AVL_Tree.h" //could be better for abstract data types
-#include "Treap.h" //lowest constant factors
+//fastest single-threaded map candidates for all int types
+#include "Radix_Flat_Map.h" //should be fast with read-heavy workloads
+#include "Batch_N_Hash_List.h" //should be fast with write-heavy workloads or batch lookup only
+#include <map> //should theoretically be fast for insertion and deletion
+#include "X-fast_Trie.h" //theoretically the fastest
+#include "AVL_Tree.h" //should theoretically be fast for lookup, successor, and predecessor
+#include "Hash_Map_AVL_Tree.h" //should theoretically be faster than both red-black tree and AVL tree
+#include "Treap.h" //should have lowest constant factors
 
 sf::VertexArray createPlot(const std::vector<sf::Vector2f>& points, float max_x, float max_y,
 						   const sf::Color& color, float width, float height, float padding) {
@@ -29,138 +31,708 @@ sf::VertexArray createPlot(const std::vector<sf::Vector2f>& points, float max_x,
 	return plot;
 }
 
-int main(){
-	// Performance graph (insertion - size_t)
-	constexpr size_t Xpoint_MAX = 40000;
-	constexpr size_t STRIDE = 1000;
-	std::vector<sf::Vector2f> stl_points;
-	std::vector<sf::Vector2f> rf_points;
-	std::vector<sf::Vector2f> rf_batch_points;
-	std::vector<sf::Vector2f> bnhl_points;
-	std::vector<sf::Vector2f> xft_points;
-	std::vector<sf::Vector2f> avl_points;
-	std::vector<sf::Vector2f> treap_points;
+constexpr size_t Xpoint_MAX = 40000;
+constexpr size_t STRIDE = 4000;
 
-	double max_elapsed = 0.000001; // Avoid division by zero, start with a tiny value
+enum class QueryType {
+	INSERT,
+	FIND,
+	SUCCESSOR,
+	PREDECESSOR,
+	ERASE,
+	RANGE
+};
+
+std::string queryTypeToString(QueryType type) {
+	switch(type) {
+		case QueryType::INSERT: return "Insert";
+		case QueryType::FIND: return "Find";
+		case QueryType::SUCCESSOR: return "Successor";
+		case QueryType::PREDECESSOR: return "Predecessor";
+		case QueryType::ERASE: return "Erase";
+		case QueryType::RANGE: return "Range";
+	}
+	return "Unknown";
+}
+
+void runBenchmarks(QueryType queryType,
+				   std::vector<sf::Vector2f>& stl_points,
+				   std::vector<sf::Vector2f>& rf_points,
+				   std::vector<sf::Vector2f>& rf_batch_points,
+				   std::vector<sf::Vector2f>& bnhl_points,
+				   std::vector<sf::Vector2f>& hash_list_points,
+				   std::vector<sf::Vector2f>& xft_points,
+				   std::vector<sf::Vector2f>& avl_points,
+				   std::vector<sf::Vector2f>& hash_avl_points,
+				   std::vector<sf::Vector2f>& treap_points) {
+
+	// Clear previous data
+	stl_points.clear();
+	rf_points.clear();
+	rf_batch_points.clear();
+	bnhl_points.clear();
+	hash_list_points.clear();
+	xft_points.clear();
+	avl_points.clear();
+	hash_avl_points.clear();
+	treap_points.clear();
 
 	for(size_t i = 1; i <= Xpoint_MAX; i += STRIDE) {
 		// Init maps
 		std::map<size_t,int> stl_map;
 		Radix_Flat_Map<size_t,int> rf_map;
 		rf_map.reserve(i);
-		Radix_Flat_Map<size_t,int> rf_batch_map;  // NEW: for batch insertion
+		Radix_Flat_Map<size_t,int> rf_batch_map;
 		rf_batch_map.reserve(i);
 		Batch_N_Hash_List<size_t,int> bnhl(i);
+		Batch_N_Hash_List<size_t,int> hash_list(i);
 		XFastTrie<size_t,int> xft(i);
-		AVL_Tree<size_t,int> hash_avl_tree(i);
+		AVL_Tree<size_t,int> avl_tree;
+		Hash_Map_AVL_Tree<size_t,int> hash_avl_tree(i);
 		Treap<size_t,int> treap;
 
 		// Init dataset
 		RandomDatasetGenerator rand_dataset(i);
 
-		// standard library map (red)
+		// Insert all data into the maps, except for insertion query type
+		if (queryType != QueryType::INSERT) {
+			for(size_t j = 0; j < i; j++) {
+				stl_map.emplace(rand_dataset.random_size_ts[j], rand_dataset.random_ints[j]);
+				rf_map.insert(rand_dataset.random_size_ts[j], rand_dataset.random_ints[j]);
+				bnhl.addHead(rand_dataset.random_size_ts[j], rand_dataset.random_ints[j]);
+				hash_list.addHead(rand_dataset.random_size_ts[j], rand_dataset.random_ints[j]);
+				xft.insert(rand_dataset.random_size_ts[j], rand_dataset.random_ints[j]);
+				avl_tree.insert(rand_dataset.random_size_ts[j], rand_dataset.random_ints[j]);
+				hash_avl_tree.insert(rand_dataset.random_size_ts[j], rand_dataset.random_ints[j]);
+				treap.insert(rand_dataset.random_size_ts[j], rand_dataset.random_ints[j]);
+			}
+			// For batch map, use batch insert
+			std::vector<std::pair<size_t, int>> batch_data;
+			batch_data.reserve(i);
+			for(size_t j = 0; j < i; j++) {
+				batch_data.emplace_back(rand_dataset.random_size_ts[j], rand_dataset.random_ints[j]);
+			}
+			rf_batch_map.insert_batch(batch_data.begin(), batch_data.end());
+		}
+
+		// Create a new dataset with different seed for queries
+		RandomDatasetGenerator query_dataset(i + 12345);
+
 		auto start = std::chrono::high_resolution_clock::now();
-		for(size_t j = 0; j < i; j++) {
-			stl_map.emplace(rand_dataset.random_size_ts[j],rand_dataset.random_ints[j]);
-		}
-		auto elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
-		stl_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
-		if (elapsed > max_elapsed) max_elapsed = elapsed;
+		auto elapsed = 0.0;
 
-		// radix flat map (green)
-		start = std::chrono::high_resolution_clock::now();
-		for(size_t j = 0; j < i; j++) {
-			rf_map.insert(rand_dataset.random_size_ts[j],rand_dataset.random_ints[j]);
-		}
-		elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
-		rf_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
-		if (elapsed > max_elapsed) max_elapsed = elapsed;
+		// Perform the selected query type
+		switch(queryType) {
+			case QueryType::INSERT: {
+				// standard library map (red)
+				start = std::chrono::high_resolution_clock::now();
+				for(size_t j = 0; j < i; j++) {
+					stl_map.emplace(rand_dataset.random_size_ts[j],rand_dataset.random_ints[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				stl_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
 
-		// radix flat map BATCH insertion (orange)
-		start = std::chrono::high_resolution_clock::now();
-		// Create pairs for batch insertion
-		std::vector<std::pair<size_t, int>> batch_data;
-		batch_data.reserve(i);
-		for(size_t j = 0; j < i; j++) {
-			batch_data.emplace_back(rand_dataset.random_size_ts[j], rand_dataset.random_ints[j]);
-		}
-		rf_batch_map.insert_batch(batch_data.begin(), batch_data.end());
-		elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
-		rf_batch_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
-		if (elapsed > max_elapsed) max_elapsed = elapsed;
+				// radix flat map (green)
+				start = std::chrono::high_resolution_clock::now();
+				for(size_t j = 0; j < i; j++) {
+					rf_map.insert(rand_dataset.random_size_ts[j],rand_dataset.random_ints[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				rf_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
 
-		// batch N Hash list (cyan)
-		start = std::chrono::high_resolution_clock::now();
-		for(size_t j = 0; j < i; j++) {
-			bnhl.addHead(rand_dataset.random_size_ts[j],rand_dataset.random_ints[j]);
-		}
-		elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
-		bnhl_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
-		if (elapsed > max_elapsed) max_elapsed = elapsed;
+				// radix flat map BATCH insertion (orange)
+				start = std::chrono::high_resolution_clock::now();
+				std::vector<std::pair<size_t, int>> batch_data;
+				batch_data.reserve(i);
+				for(size_t j = 0; j < i; j++) {
+					batch_data.emplace_back(rand_dataset.random_size_ts[j], rand_dataset.random_ints[j]);
+				}
+				rf_batch_map.insert_batch(batch_data.begin(), batch_data.end());
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				rf_batch_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
 
-		// X-fast trie (yellow)
-		start = std::chrono::high_resolution_clock::now();
-		for(size_t j = 0; j < i; j++) {
-			xft.insert(rand_dataset.random_size_ts[j],rand_dataset.random_ints[j]);
-		}
-		elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
-		xft_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
-		if (elapsed > max_elapsed) max_elapsed = elapsed;
+				// batch N Hash list (cyan)
+				start = std::chrono::high_resolution_clock::now();
+				for(size_t j = 0; j < i; j++) {
+					bnhl.addHead(rand_dataset.random_size_ts[j],rand_dataset.random_ints[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				bnhl_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
 
-		// Hash map AVL tree (magenta)
-		start = std::chrono::high_resolution_clock::now();
-		for (size_t j = 0; j < i; j++) {
-		hash_avl_tree.insert(rand_dataset.random_size_ts[j], rand_dataset.random_ints[j]);
-		}
-		elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
-		avl_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
-		if (elapsed > max_elapsed) max_elapsed = elapsed;
+				// hash list (light grey)
+				start = std::chrono::high_resolution_clock::now();
+				for(size_t j = 0; j < i; j++) {
+					hash_list.addHead(rand_dataset.random_size_ts[j],rand_dataset.random_ints[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				hash_list_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
 
-		// Treap (pink)
-		start = std::chrono::high_resolution_clock::now();
-		for (size_t j = 0; j < i; j++) {
-			treap.insert(rand_dataset.random_size_ts[j], rand_dataset.random_ints[j]);
+				// X-fast trie (yellow)
+				start = std::chrono::high_resolution_clock::now();
+				for(size_t j = 0; j < i; j++) {
+					xft.insert(rand_dataset.random_size_ts[j],rand_dataset.random_ints[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				xft_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// AVL tree
+				start = std::chrono::high_resolution_clock::now();
+				for (size_t j = 0; j < i; j++) {
+					avl_tree.insert(rand_dataset.random_size_ts[j], rand_dataset.random_ints[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				avl_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// Hash map AVL tree
+				start = std::chrono::high_resolution_clock::now();
+				for (size_t j = 0; j < i; j++) {
+					hash_avl_tree.insert(rand_dataset.random_size_ts[j], rand_dataset.random_ints[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				hash_avl_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// Treap
+				start = std::chrono::high_resolution_clock::now();
+				for (size_t j = 0; j < i; j++) {
+					treap.insert(rand_dataset.random_size_ts[j], rand_dataset.random_ints[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				treap_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+				break;
+			}
+
+			case QueryType::FIND: {
+				// standard library map
+				start = std::chrono::high_resolution_clock::now();
+				for(size_t j = 0; j < i; j++) {
+					stl_map.find(query_dataset.random_size_ts[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				stl_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// radix flat map
+				start = std::chrono::high_resolution_clock::now();
+				for(size_t j = 0; j < i; j++) {
+					rf_map.find(query_dataset.random_size_ts[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				rf_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// radix flat map batch
+				start = std::chrono::high_resolution_clock::now();
+				for(size_t j = 0; j < i; j++) {
+					rf_batch_map.find(query_dataset.random_size_ts[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				rf_batch_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// batch N Hash list
+				start = std::chrono::high_resolution_clock::now();
+				for(size_t j = 0; j < i; j++) {
+					bnhl.find(query_dataset.random_size_ts[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				bnhl_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// hash list
+				start = std::chrono::high_resolution_clock::now();
+				for(size_t j = 0; j < i; j++) {
+					hash_list.find(query_dataset.random_size_ts[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				hash_list_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// X-fast trie
+				start = std::chrono::high_resolution_clock::now();
+				for(size_t j = 0; j < i; j++) {
+					xft.find(query_dataset.random_size_ts[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				xft_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// AVL tree
+				start = std::chrono::high_resolution_clock::now();
+				for (size_t j = 0; j < i; j++) {
+					avl_tree.find(query_dataset.random_size_ts[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				avl_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// Hash map AVL tree
+				start = std::chrono::high_resolution_clock::now();
+				for (size_t j = 0; j < i; j++) {
+					hash_avl_tree.find(query_dataset.random_size_ts[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				hash_avl_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// Treap
+				start = std::chrono::high_resolution_clock::now();
+				for (size_t j = 0; j < i; j++) {
+					treap.find(query_dataset.random_size_ts[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				treap_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+				break;
+			}
+
+			case QueryType::SUCCESSOR: {
+				// standard library map
+				start = std::chrono::high_resolution_clock::now();
+				for(size_t j = 0; j < i; j++) {
+					stl_map.upper_bound(query_dataset.random_size_ts[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				stl_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// radix flat map
+				start = std::chrono::high_resolution_clock::now();
+				for(size_t j = 0; j < i; j++) {
+					rf_map.successor(query_dataset.random_size_ts[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				rf_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// radix flat map batch
+				start = std::chrono::high_resolution_clock::now();
+				for(size_t j = 0; j < i; j++) {
+					rf_batch_map.successor(query_dataset.random_size_ts[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				rf_batch_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// batch N Hash list (uses batch operation)
+				start = std::chrono::high_resolution_clock::now();
+				bnhl.batch_successors(query_dataset.random_size_ts);
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				bnhl_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// hash list (uses individual queries)
+				start = std::chrono::high_resolution_clock::now();
+				hash_list.successor(query_dataset.random_size_ts[0]);
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				hash_list_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed*(double)(i)));
+
+				// X-fast trie
+				start = std::chrono::high_resolution_clock::now();
+				for(size_t j = 0; j < i; j++) {
+					xft.successor(query_dataset.random_size_ts[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				xft_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// AVL tree
+				start = std::chrono::high_resolution_clock::now();
+				for (size_t j = 0; j < i; j++) {
+					avl_tree.upper_bound(query_dataset.random_size_ts[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				avl_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// Hash map AVL tree
+				start = std::chrono::high_resolution_clock::now();
+				for (size_t j = 0; j < i; j++) {
+					hash_avl_tree.upper_bound(query_dataset.random_size_ts[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				hash_avl_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// Treap
+				start = std::chrono::high_resolution_clock::now();
+				for (size_t j = 0; j < i; j++) {
+					treap.upper_bound(query_dataset.random_size_ts[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				treap_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+				break;
+			}
+
+			case QueryType::PREDECESSOR: {
+				// standard library map
+				start = std::chrono::high_resolution_clock::now();
+				for(size_t j = 0; j < i; j++) {
+					stl_map.lower_bound(query_dataset.random_size_ts[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				stl_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// radix flat map
+				start = std::chrono::high_resolution_clock::now();
+				for(size_t j = 0; j < i; j++) {
+					rf_map.predecessor(query_dataset.random_size_ts[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				rf_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// radix flat map batch
+				start = std::chrono::high_resolution_clock::now();
+				for(size_t j = 0; j < i; j++) {
+					rf_batch_map.predecessor(query_dataset.random_size_ts[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				rf_batch_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// batch N Hash list (uses batch operation)
+				start = std::chrono::high_resolution_clock::now();
+				bnhl.batch_predecessors(query_dataset.random_size_ts);
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				bnhl_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// hash list (uses individual queries)
+				start = std::chrono::high_resolution_clock::now();
+				hash_list.predecessor(query_dataset.random_size_ts[0]);
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				hash_list_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed*(double)(i)));
+
+				// X-fast trie
+				start = std::chrono::high_resolution_clock::now();
+				for(size_t j = 0; j < i; j++) {
+					xft.predecessor(query_dataset.random_size_ts[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				xft_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// AVL tree
+				start = std::chrono::high_resolution_clock::now();
+				for (size_t j = 0; j < i; j++) {
+					avl_tree.lower_bound(query_dataset.random_size_ts[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				avl_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// Hash map AVL tree
+				start = std::chrono::high_resolution_clock::now();
+				for (size_t j = 0; j < i; j++) {
+					hash_avl_tree.lower_bound(query_dataset.random_size_ts[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				hash_avl_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// Treap
+				start = std::chrono::high_resolution_clock::now();
+				for (size_t j = 0; j < i; j++) {
+					treap.lower_bound(query_dataset.random_size_ts[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				treap_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+				break;
+			}
+
+			case QueryType::ERASE: {
+				// standard library map
+				start = std::chrono::high_resolution_clock::now();
+				for(size_t j = 0; j < i; j++) {
+					stl_map.erase(query_dataset.random_size_ts[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				stl_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// radix flat map
+				start = std::chrono::high_resolution_clock::now();
+				for(size_t j = 0; j < i; j++) {
+					rf_map.erase(query_dataset.random_size_ts[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				rf_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// radix flat map batch
+				start = std::chrono::high_resolution_clock::now();
+				rf_batch_map.erase_batch(query_dataset.random_size_ts.begin(),query_dataset.random_size_ts.end());
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				rf_batch_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// batch N Hash list
+				start = std::chrono::high_resolution_clock::now();
+				for(size_t j = 0; j < i; j++) {
+					bnhl.remove(query_dataset.random_size_ts[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				bnhl_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// hash list
+				start = std::chrono::high_resolution_clock::now();
+				for(size_t j = 0; j < i; j++) {
+					hash_list.remove(query_dataset.random_size_ts[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				hash_list_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// X-fast trie
+				start = std::chrono::high_resolution_clock::now();
+				for(size_t j = 0; j < i; j++) {
+					xft.erase(query_dataset.random_size_ts[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				xft_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// AVL tree
+				start = std::chrono::high_resolution_clock::now();
+				for (size_t j = 0; j < i; j++) {
+					avl_tree.erase(query_dataset.random_size_ts[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				avl_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// Hash map AVL tree
+				start = std::chrono::high_resolution_clock::now();
+				for (size_t j = 0; j < i; j++) {
+					hash_avl_tree.erase(query_dataset.random_size_ts[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				hash_avl_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// Treap
+				start = std::chrono::high_resolution_clock::now();
+				for (size_t j = 0; j < i; j++) {
+					treap.erase(query_dataset.random_size_ts[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				treap_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+				break;
+			}
+
+			case QueryType::RANGE: {
+				// For range queries, iterate through entire data structure
+				size_t range_size = std::max(size_t(1), i / 10);
+
+				// standard library map
+				start = std::chrono::high_resolution_clock::now();
+				for(size_t j = 0; j < i; j++) {
+					auto it1 = stl_map.lower_bound(query_dataset.random_size_ts[j]);
+					auto it2 = stl_map.upper_bound(query_dataset.random_size_ts[j] + range_size);
+					// Iterate through range
+					for(auto it = it1; it != it2; ++it) {}
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				stl_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// radix flat map
+				start = std::chrono::high_resolution_clock::now();
+				for(auto iter = rf_map.begin(); iter != rf_map.end(); ++iter) {}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				rf_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// radix flat map batch
+				start = std::chrono::high_resolution_clock::now();
+				for(auto iter = rf_batch_map.begin(); iter != rf_batch_map.end(); ++iter) {}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				rf_batch_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// batch N Hash list
+				start = std::chrono::high_resolution_clock::now();
+				for(auto iter = bnhl.begin(); iter != bnhl.end(); ++iter) {}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				bnhl_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// hash list
+				start = std::chrono::high_resolution_clock::now();
+				for(auto iter = hash_list.begin(); iter != hash_list.end(); ++iter) {}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				hash_list_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// X-fast trie
+				start = std::chrono::high_resolution_clock::now();
+				for(auto iter = xft.begin(); iter != xft.end(); ++iter) {}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				xft_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// AVL tree
+				start = std::chrono::high_resolution_clock::now();
+				for(auto iter = avl_tree.begin(); iter != avl_tree.end(); ++iter) {}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				avl_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// Hash map AVL tree
+				start = std::chrono::high_resolution_clock::now();
+				for(auto iter = hash_avl_tree.begin(); iter != hash_avl_tree.end(); ++iter) {}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				hash_avl_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// Treap
+				start = std::chrono::high_resolution_clock::now();
+				for(auto iter = treap.begin(); iter != treap.end(); ++iter) {}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				treap_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+				break;
+			}
 		}
-		elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
-		treap_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
-		if (elapsed > max_elapsed) max_elapsed = elapsed;
+	}
+}
+
+int main() {
+	// Create separate point vectors for each data structure and query type
+	std::map<QueryType, std::vector<sf::Vector2f>> stl_results;
+	std::map<QueryType, std::vector<sf::Vector2f>> rf_results;
+	std::map<QueryType, std::vector<sf::Vector2f>> rf_batch_results;
+	std::map<QueryType, std::vector<sf::Vector2f>> bnhl_results;
+	std::map<QueryType, std::vector<sf::Vector2f>> hash_list_results;
+	std::map<QueryType, std::vector<sf::Vector2f>> xft_results;
+	std::map<QueryType, std::vector<sf::Vector2f>> avl_results;
+	std::map<QueryType, std::vector<sf::Vector2f>> hash_avl_results;
+	std::map<QueryType, std::vector<sf::Vector2f>> treap_results;
+
+	// Run all benchmarks at startup
+	std::vector<QueryType> all_query_types = {
+		QueryType::INSERT, QueryType::FIND, QueryType::SUCCESSOR,
+		QueryType::PREDECESSOR, QueryType::ERASE, QueryType::RANGE
+	};
+
+	std::cout << "Running benchmarks for all query types..." << std::endl;
+	for (const auto& queryType : all_query_types) {
+		std::cout << "  - " << queryTypeToString(queryType) << std::endl;
+		runBenchmarks(queryType,
+					  stl_results[queryType],
+					  rf_results[queryType],
+					  rf_batch_results[queryType],
+					  bnhl_results[queryType],
+					  hash_list_results[queryType],
+					  xft_results[queryType],
+					  avl_results[queryType],
+					  hash_avl_results[queryType],
+					  treap_results[queryType]);
+	}
+	std::cout << "All benchmarks complete!" << std::endl;
+
+	std::map<QueryType, bool> selectedQueries;
+	for (const auto& qt : all_query_types) {
+		selectedQueries[qt] = (qt == QueryType::INSERT);
 	}
 
+	std::vector<sf::Vector2f> stl_points;
+	std::vector<sf::Vector2f> rf_points;
+	std::vector<sf::Vector2f> rf_batch_points;
+	std::vector<sf::Vector2f> bnhl_points;
+	std::vector<sf::Vector2f> hash_list_points;
+	std::vector<sf::Vector2f> xft_points;
+	std::vector<sf::Vector2f> avl_points;
+	std::vector<sf::Vector2f> hash_avl_points;
+	std::vector<sf::Vector2f> treap_points;
 
-	// --- 2. SFML Plotting ---
-    constexpr float WIN_WIDTH = 1000.0f;
-    constexpr float WIN_HEIGHT = 800.0f;
-    constexpr float PADDING = 60.0f;
+	auto recalculateCombinedTimes = [&]() {
+		stl_points.clear();
+		rf_points.clear();
+		rf_batch_points.clear();
+		bnhl_points.clear();
+		hash_list_points.clear();
+		xft_points.clear();
+		avl_points.clear();
+		hash_avl_points.clear();
+		treap_points.clear();
 
-    sf::RenderWindow window(sf::VideoMode(static_cast<unsigned int>(WIN_WIDTH), static_cast<unsigned int>(WIN_HEIGHT)), "Map Insertion Benchmark");
-    window.setFramerateLimit(60);
+		size_t numPoints = stl_results[QueryType::INSERT].size();
 
-    // --- Create Plot Lines ---
-    float max_x = static_cast<float>(Xpoint_MAX);
-    float max_y = static_cast<float>(max_elapsed);
+		for (size_t i = 0; i < numPoints; ++i) {
+			float stl_sum = 0, rf_sum = 0, rf_batch_sum = 0, bnhl_sum = 0, hash_list_sum = 0;
+			float xft_sum = 0, avl_sum = 0, hash_avl_sum = 0, treap_sum = 0;
+			float x_value = 0;
 
-    sf::VertexArray plot_stl = createPlot(stl_points, max_x, max_y, sf::Color::Red, WIN_WIDTH, WIN_HEIGHT, PADDING);
-    sf::VertexArray plot_rf = createPlot(rf_points, max_x, max_y, sf::Color::Green, WIN_WIDTH, WIN_HEIGHT, PADDING);
-    sf::VertexArray plot_rf_batch = createPlot(rf_batch_points, max_x, max_y, sf::Color(255, 165, 0), WIN_WIDTH, WIN_HEIGHT, PADDING); // NEW
-    sf::VertexArray plot_bnhl = createPlot(bnhl_points, max_x, max_y, sf::Color::Cyan, WIN_WIDTH, WIN_HEIGHT, PADDING);
-    sf::VertexArray plot_xft = createPlot(xft_points, max_x, max_y, sf::Color::Yellow, WIN_WIDTH, WIN_HEIGHT, PADDING);
-    sf::VertexArray plot_avl = createPlot(avl_points, max_x, max_y, sf::Color::Magenta, WIN_WIDTH, WIN_HEIGHT, PADDING);
-    sf::VertexArray plot_treap = createPlot(treap_points, max_x, max_y, sf::Color(255, 192, 203), WIN_WIDTH, WIN_HEIGHT, PADDING); // Pink
+			for (const auto& qt : all_query_types) {
+				if (selectedQueries[qt]) {
+					stl_sum += stl_results[qt][i].y;
+					rf_sum += rf_results[qt][i].y;
+					rf_batch_sum += rf_batch_results[qt][i].y;
+					bnhl_sum += bnhl_results[qt][i].y;
+					hash_list_sum += hash_list_results[qt][i].y;
+					xft_sum += xft_results[qt][i].y;
+					avl_sum += avl_results[qt][i].y;
+					hash_avl_sum += hash_avl_results[qt][i].y;
+					treap_sum += treap_results[qt][i].y;
+					x_value = stl_results[qt][i].x; // All have same x values
+				}
+			}
 
-    // --- Create Axes ---
-    sf::VertexArray axes(sf::Lines);
-    // Y-Axis
-    axes.append(sf::Vertex(sf::Vector2f(PADDING, PADDING), sf::Color::White));
-    axes.append(sf::Vertex(sf::Vector2f(PADDING, WIN_HEIGHT - PADDING), sf::Color::White));
-    // X-Axis
-    axes.append(sf::Vertex(sf::Vector2f(PADDING, WIN_HEIGHT - PADDING), sf::Color::White));
-    axes.append(sf::Vertex(sf::Vector2f(WIN_WIDTH - PADDING, WIN_HEIGHT - PADDING), sf::Color::White));
+			stl_points.emplace_back(x_value, stl_sum);
+			rf_points.emplace_back(x_value, rf_sum);
+			rf_batch_points.emplace_back(x_value, rf_batch_sum);
+			bnhl_points.emplace_back(x_value, bnhl_sum);
+			hash_list_points.emplace_back(x_value, hash_list_sum);
+			xft_points.emplace_back(x_value, xft_sum);
+			avl_points.emplace_back(x_value, avl_sum);
+			hash_avl_points.emplace_back(x_value, hash_avl_sum);
+			treap_points.emplace_back(x_value, treap_sum);
+		}
+	};
 
-    // --- Load Font --
-    sf::Font font;
-    bool font_loaded = false;
+	recalculateCombinedTimes(); // Initial calculation with just INSERT selected
 
-    // Try default font paths depending on OS
+
+	// SFML Plotting
+	constexpr float WIN_WIDTH = 1000.0f;
+	constexpr float WIN_HEIGHT = 800.0f;
+	constexpr float PADDING = 60.0f;
+
+	sf::RenderWindow window(sf::VideoMode(static_cast<unsigned int>(WIN_WIDTH), static_cast<unsigned int>(WIN_HEIGHT)), "Map Insertion Benchmark");
+	window.setFramerateLimit(60);
+
+	// Track visibility and data for each plot
+	struct PlotInfo {
+		std::vector<sf::Vector2f>* points;
+		sf::Color color;
+		bool visible;
+		std::string name;
+		sf::VertexArray* vertexArray;
+	};
+
+	sf::VertexArray plot_stl;
+	sf::VertexArray plot_rf;
+	sf::VertexArray plot_rf_batch;
+	sf::VertexArray plot_bnhl;
+	sf::VertexArray plot_hash_list;
+	sf::VertexArray plot_xft;
+	sf::VertexArray plot_avl;
+	sf::VertexArray plot_hash_avl;
+	sf::VertexArray plot_treap;
+
+	std::vector<PlotInfo> plots = {
+		{&stl_points, sf::Color::Red, true, "Red: std::map (red-black tree)", &plot_stl},
+		{&rf_points, sf::Color::Green, true, "Green: Radix_Flat_Map (No batching)", &plot_rf},
+		{&rf_batch_points, sf::Color(255, 165, 0), true, "Orange: Radix_Flat_Map (Batch = N)", &plot_rf_batch},
+		{&bnhl_points, sf::Color::Cyan, true, "Cyan: Batch_N_Hash_List (Batch = N)", &plot_bnhl},
+		{&hash_list_points, sf::Color(180, 180, 180), true, "Light Grey: Batch_N_Hash_List (No batching)", &plot_hash_list},
+		{&xft_points, sf::Color::Yellow, true, "Yellow: XFastTrie", &plot_xft},
+		{&avl_points, sf::Color(128, 128, 128), true, "Grey: AVL_Tree", &plot_avl},
+		{&hash_avl_points, sf::Color::Magenta, true, "Magenta: Hash_Map_AVL_Tree", &plot_hash_avl},
+		{&treap_points, sf::Color(255, 192, 203), true, "Pink: Treap", &plot_treap}
+	};
+
+	float max_x = static_cast<float>(Xpoint_MAX);
+
+	// Function to regenerate all plots
+	auto regeneratePlots = [&plots, &max_x, WIN_WIDTH, WIN_HEIGHT, PADDING]() {
+		float max_y = 0.000001f;
+		for (const auto& plot : plots) {
+			if (plot.visible) {
+				for (const auto& point : *plot.points) {
+					if (point.y > max_y) {
+						max_y = point.y;
+					}
+				}
+			}
+		}
+
+		for (auto& plot : plots) {
+			*plot.vertexArray = createPlot(*plot.points, max_x, max_y, plot.color, WIN_WIDTH, WIN_HEIGHT, PADDING);
+		}
+
+		return max_y;
+	};
+
+	float max_y = regeneratePlots();
+
+	// Create axises
+	sf::VertexArray axes(sf::Lines);
+	// Y-Axis
+	axes.append(sf::Vertex(sf::Vector2f(PADDING, PADDING), sf::Color::White));
+	axes.append(sf::Vertex(sf::Vector2f(PADDING, WIN_HEIGHT - PADDING), sf::Color::White));
+	// X-Axis
+	axes.append(sf::Vertex(sf::Vector2f(PADDING, WIN_HEIGHT - PADDING), sf::Color::White));
+	axes.append(sf::Vertex(sf::Vector2f(WIN_WIDTH - PADDING, WIN_HEIGHT - PADDING), sf::Color::White));
+
+	// Load Font
+	sf::Font font;
+	bool font_loaded = false;
+
+	// Try default font paths depending on OS
 	#ifdef _WIN32
 		font_loaded = font.loadFromFile("C:/Windows/Fonts/Arial.ttf");
 	#elif __APPLE__
@@ -173,125 +745,294 @@ int main(){
 		std::cerr << "Could not load a default font. Labels will be missing.\n";
 	}
 
-    // --- Create Labels ---
-    sf::Text title, y_label, x_label, max_y_label, max_x_label;
-    sf::Text legend_stl, legend_rf, legend_rf_batch, legend_bnhl, legend_xft, legend_avl, legend_treap;
+	// Create Labels
+	sf::Text title, y_label, x_label, max_y_label, max_x_label;
+	std::vector<sf::Text> legend_texts;
+	std::vector<sf::CircleShape> legend_circles;
 
-    if (font_loaded) {
-        title.setFont(font);
-        title.setString("Times to insert N unsigned int (Max N = " + std::to_string(Xpoint_MAX) + ")");
-        title.setCharacterSize(20);
-        title.setPosition(WIN_WIDTH / 2.0f - title.getGlobalBounds().width / 2.0f, PADDING / 4.0f);
+	if (font_loaded) {
+		title.setFont(font);
+		title.setCharacterSize(20);
 
-        y_label.setFont(font);
-        y_label.setString("Time (s)");
-        y_label.setCharacterSize(16);
-        y_label.setRotation(-90);
-        y_label.setPosition(PADDING / 2.5f, WIN_HEIGHT / 2.0f + y_label.getGlobalBounds().width / 2.0f);
+		y_label.setFont(font);
+		y_label.setString("Time (s)");
+		y_label.setCharacterSize(16);
+		y_label.setRotation(-90);
+		y_label.setPosition(PADDING / 2.5f, WIN_HEIGHT / 2.0f + y_label.getGlobalBounds().width / 2.0f);
 
-        x_label.setFont(font);
-        x_label.setString("N (unsigned int)");
-        x_label.setCharacterSize(16);
-        x_label.setPosition(WIN_WIDTH / 2.0f - x_label.getGlobalBounds().width / 2.0f, WIN_HEIGHT - PADDING / 1.5f);
+		x_label.setFont(font);
+		x_label.setString("N (unsigned int)");
+		x_label.setCharacterSize(16);
+		x_label.setPosition(WIN_WIDTH / 2.0f - x_label.getGlobalBounds().width / 2.0f, WIN_HEIGHT - PADDING / 1.5f);
 
-        // Format max_y to be readable
-        std::stringstream ss;
-        ss << std::fixed << std::setprecision(4) << max_y;
-        max_y_label.setFont(font);
-        max_y_label.setString(ss.str() + "s");
-        max_y_label.setCharacterSize(12);
-        max_y_label.setPosition(PADDING + 5, PADDING - 5);
+		max_x_label.setFont(font);
+		max_x_label.setString(std::to_string(Xpoint_MAX));
+		max_x_label.setCharacterSize(12);
+		max_x_label.setPosition(WIN_WIDTH - PADDING - max_x_label.getGlobalBounds().width - 5, WIN_HEIGHT - PADDING + 5);
 
-        max_x_label.setFont(font);
-        max_x_label.setString(std::to_string(Xpoint_MAX));
-        max_x_label.setCharacterSize(12);
-        max_x_label.setPosition(WIN_WIDTH - PADDING - max_x_label.getGlobalBounds().width - 5, WIN_HEIGHT - PADDING + 5);
+		// Initialize max_y label
+		std::stringstream ss;
+		ss << std::fixed << std::setprecision(4) << max_y;
+		max_y_label.setFont(font);
+		max_y_label.setString(ss.str() + "s");
+		max_y_label.setCharacterSize(12);
+		max_y_label.setPosition(PADDING + 5, PADDING - 5);
 
-        // Legend
-        float legend_x = PADDING + 20.0f;
-        float legend_y = PADDING + 20.0f;
+		// Legend with circles
+		float legend_x = PADDING + 20.0f;
+		float legend_y = PADDING + 20.0f;
+		float circle_radius = 6.0f;
 
-        legend_stl.setFont(font);
-        legend_stl.setString("Red: std::map");
-        legend_stl.setCharacterSize(12);
-        legend_stl.setPosition(legend_x, legend_y);
-        legend_stl.setFillColor(sf::Color::Red);
+		for (size_t i = 0; i < plots.size(); ++i) {
+			// Create circle
+			sf::CircleShape circle(circle_radius);
+			circle.setFillColor(plots[i].color);
+			circle.setPosition(legend_x, legend_y + i * 20 + 3);
+			legend_circles.push_back(circle);
 
-        legend_rf.setFont(font);
-        legend_rf.setString("Green: Radix_Flat_Map");
-        legend_rf.setCharacterSize(12);
-        legend_rf.setPosition(legend_x, legend_y + 20);
-        legend_rf.setFillColor(sf::Color::Green);
+			// Create text
+			sf::Text text;
+			text.setFont(font);
+			text.setString(plots[i].name);
+			text.setCharacterSize(12);
+			text.setPosition(legend_x + circle_radius * 2 + 5, legend_y + i * 20);
+			text.setFillColor(plots[i].color);
+			legend_texts.push_back(text);
+		}
+	}
 
-        legend_rf_batch.setFont(font);
-        legend_rf_batch.setString("Orange: Radix_Flat_Map (Batch)");
-        legend_rf_batch.setCharacterSize(12);
-        legend_rf_batch.setPosition(legend_x, legend_y + 40);
-        legend_rf_batch.setFillColor(sf::Color(255, 165, 0));
+	// Query Type Selection Buttons
+	std::vector<sf::RectangleShape> query_buttons;
+	std::vector<sf::Text> query_button_texts;
 
-        legend_bnhl.setFont(font);
-        legend_bnhl.setString("Cyan: Batch_N_Hash_List");
-        legend_bnhl.setCharacterSize(12);
-        legend_bnhl.setPosition(legend_x, legend_y + 60);  // Shifted down
-        legend_bnhl.setFillColor(sf::Color::Cyan);
+	sf::Text query_selector_label;
+	float selector_x = PADDING + 20.0f;
+	float selector_y = PADDING + 20.0f + plots.size() * 20 + 30;
+	float button_width = 95.0f;
+	float button_height = 25.0f;
+	float button_spacing = 5.0f;
 
-        legend_xft.setFont(font);
-        legend_xft.setString("Yellow: XFastTrie");
-        legend_xft.setCharacterSize(12);
-        legend_xft.setPosition(legend_x, legend_y + 80);  // Shifted down
-        legend_xft.setFillColor(sf::Color::Yellow);
+	if (font_loaded) {
+		query_selector_label.setFont(font);
+		query_selector_label.setString("Query Types (click to toggle):");
+		query_selector_label.setCharacterSize(14);
+		query_selector_label.setPosition(selector_x, selector_y - 20);
+		query_selector_label.setFillColor(sf::Color::White);
 
-        legend_avl.setFont(font);
-        legend_avl.setString("Magenta: Hash_Map_AVL_Tree");
-        legend_avl.setCharacterSize(12);
-        legend_avl.setPosition(legend_x, legend_y + 100);  // Shifted down
-        legend_avl.setFillColor(sf::Color::Magenta);
+		for (size_t i = 0; i < all_query_types.size(); ++i) {
+			float x_offset = (i % 3) * (button_width + button_spacing);
+			float y_offset = (i / 3) * (button_height + button_spacing);
 
-        legend_treap.setFont(font);
-        legend_treap.setString("Pink: Treap");
-        legend_treap.setCharacterSize(12);
-        legend_treap.setPosition(legend_x, legend_y + 120);  // Shifted down
-        legend_treap.setFillColor(sf::Color(255, 192, 203));
-    }
+			// Create button
+			sf::RectangleShape button(sf::Vector2f(button_width, button_height));
+			button.setPosition(selector_x + x_offset, selector_y + y_offset);
+			button.setOutlineThickness(2.0f);
 
-    // --- 3. Main SFML Loop ---
-    while (window.isOpen()) {
-        sf::Event event;
-        while (window.pollEvent(event)) {
-            if (event.type == sf::Event::Closed)
-                window.close();
-        }
+			// Highlight if selected
+			if (selectedQueries[all_query_types[i]]) {
+				button.setFillColor(sf::Color(50, 50, 150));
+				button.setOutlineColor(sf::Color::White);
+			} else {
+				button.setFillColor(sf::Color(30, 30, 60));
+				button.setOutlineColor(sf::Color(100, 100, 100));
+			}
 
-        window.clear(sf::Color(10, 10, 30)); // Dark blue background
+			query_buttons.push_back(button);
 
-        // Draw plots
-        window.draw(plot_stl);
-        window.draw(plot_rf);
-        window.draw(plot_rf_batch);  // NEW
-        window.draw(plot_bnhl);
-        window.draw(plot_xft);
-        window.draw(plot_avl);
-        window.draw(plot_treap);
+			// Create button text
+			sf::Text button_text;
+			button_text.setFont(font);
+			button_text.setString(queryTypeToString(all_query_types[i]));
+			button_text.setCharacterSize(11);
+			button_text.setFillColor(sf::Color::White);
 
-        // Draw UI
-        window.draw(axes);
-        if (font_loaded) {
-            window.draw(title);
-            window.draw(x_label);
-            window.draw(y_label);
-            window.draw(max_x_label);
-            window.draw(max_y_label);
-            window.draw(legend_stl);
-            window.draw(legend_rf);
-            window.draw(legend_rf_batch);  // NEW
-            window.draw(legend_bnhl);
-            window.draw(legend_xft);
-            window.draw(legend_avl);
-            window.draw(legend_treap);
-        }
+			// Center text in button
+			sf::FloatRect text_bounds = button_text.getLocalBounds();
+			button_text.setPosition(
+				selector_x + x_offset + (button_width - text_bounds.width) / 2.0f - text_bounds.left,
+				selector_y + y_offset + (button_height - text_bounds.height) / 2.0f - text_bounds.top - 2
+			);
 
-        window.display();
-    }
+			query_button_texts.push_back(button_text);
+		}
+	}
 
-    return 0;
+	// Function to generate title based on selected queries
+	auto generateTitle = [&]() -> std::string {
+		std::string title_str = "Queries: ";
+		std::vector<std::string> selected_names;
+		for (const auto& qt : all_query_types) {
+			if (selectedQueries[qt]) {
+				selected_names.push_back(queryTypeToString(qt));
+			}
+		}
+
+		if (selected_names.empty()) {
+			title_str += "None";
+		} else if (selected_names.size() == 1) {
+			title_str += selected_names[0];
+		} else {
+			for (size_t i = 0; i < selected_names.size(); ++i) {
+				title_str += selected_names[i];
+				if (i < selected_names.size() - 1) {
+					title_str += " + ";
+				}
+			}
+		}
+		title_str += " - N unsigned int (Max N = " + std::to_string(Xpoint_MAX) + ")";
+		return title_str;
+	};
+
+	// Set initial title
+	if (font_loaded) {
+		title.setString(generateTitle());
+		title.setPosition(WIN_WIDTH / 2.0f - title.getGlobalBounds().width / 2.0f, PADDING / 4.0f);
+	}
+
+	// Main SFML Loop
+	while (window.isOpen()) {
+		sf::Event event;
+		while (window.pollEvent(event)) {
+			if (event.type == sf::Event::Closed)
+				window.close();
+
+			if (event.type == sf::Event::MouseButtonPressed) {
+				if (event.mouseButton.button == sf::Mouse::Left) {
+					sf::Vector2f mousePos(static_cast<float>(event.mouseButton.x),
+										 static_cast<float>(event.mouseButton.y));
+
+					// Check if any circle was clicked
+					bool circle_clicked = false;
+					for (size_t i = 0; i < legend_circles.size(); ++i) {
+						if (legend_circles[i].getGlobalBounds().contains(mousePos)) {
+							// Toggle visibility
+							plots[i].visible = !plots[i].visible;
+
+							// Update circle appearance
+							if (plots[i].visible) {
+								legend_circles[i].setFillColor(plots[i].color);
+							} else {
+								// Darken the color
+								sf::Color darkColor = plots[i].color;
+								darkColor.r /= 3;
+								darkColor.g /= 3;
+								darkColor.b /= 3;
+								legend_circles[i].setFillColor(darkColor);
+							}
+
+							// Regenerate plots with new scale
+							max_y = regeneratePlots();
+
+							// Update max_y label
+							if (font_loaded) {
+								std::stringstream ss;
+								ss << std::fixed << std::setprecision(4) << max_y;
+								max_y_label.setFont(font);
+								max_y_label.setString(ss.str() + "s");
+								max_y_label.setCharacterSize(12);
+								max_y_label.setPosition(PADDING + 5, PADDING - 5);
+							}
+
+							circle_clicked = true;
+							break;
+						}
+					}
+
+					// Check if any query button was clicked
+					if (!circle_clicked) {
+						for (size_t i = 0; i < query_buttons.size(); ++i) {
+							if (query_buttons[i].getGlobalBounds().contains(mousePos)) {
+								// Toggle query selection
+								selectedQueries[all_query_types[i]] = !selectedQueries[all_query_types[i]];
+
+								// Update button appearance
+								if (selectedQueries[all_query_types[i]]) {
+									query_buttons[i].setFillColor(sf::Color(50, 50, 150));
+									query_buttons[i].setOutlineColor(sf::Color::White);
+								} else {
+									query_buttons[i].setFillColor(sf::Color(30, 30, 60));
+									query_buttons[i].setOutlineColor(sf::Color(100, 100, 100));
+								}
+
+								recalculateCombinedTimes();
+
+								max_y = regeneratePlots();
+
+								// Update title
+								if (font_loaded) {
+									title.setString(generateTitle());
+									title.setPosition(WIN_WIDTH / 2.0f - title.getGlobalBounds().width / 2.0f, PADDING / 4.0f);
+
+									// Update max_y label
+									std::stringstream ss;
+									ss << std::fixed << std::setprecision(4) << max_y;
+									max_y_label.setString(ss.str() + "s");
+									max_y_label.setPosition(PADDING + 5, PADDING - 5);
+								}
+
+								break;
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// Check for mouse hover over buttons for visual feedback
+		sf::Vector2i mousePixelPos = sf::Mouse::getPosition(window);
+		sf::Vector2f mousePos(static_cast<float>(mousePixelPos.x), static_cast<float>(mousePixelPos.y));
+
+		for (size_t i = 0; i < query_buttons.size(); ++i) {
+			if (query_buttons[i].getGlobalBounds().contains(mousePos)) {
+				// Brighten button on hover if not selected
+				if (!selectedQueries[all_query_types[i]]) {
+					query_buttons[i].setFillColor(sf::Color(40, 40, 80));
+				}
+			} else {
+				// Reset to default color
+				if (!selectedQueries[all_query_types[i]]) {
+					query_buttons[i].setFillColor(sf::Color(30, 30, 60));
+				}
+			}
+		}
+
+		window.clear(sf::Color(10, 10, 30)); // Dark blue background
+
+		// Draw plots (only if visible)
+		for (const auto& plot : plots) {
+			if (plot.visible) {
+				window.draw(*plot.vertexArray);
+			}
+		}
+
+		// Draw UI
+		window.draw(axes);
+		if (font_loaded) {
+			window.draw(title);
+			window.draw(x_label);
+			window.draw(y_label);
+			window.draw(max_x_label);
+			window.draw(max_y_label);
+
+			for (const auto& circle : legend_circles) {
+				window.draw(circle);
+			}
+			for (const auto& text : legend_texts) {
+				window.draw(text);
+			}
+
+			// Draw query type buttons
+			window.draw(query_selector_label);
+			for (const auto& button : query_buttons) {
+				window.draw(button);
+			}
+			for (const auto& text : query_button_texts) {
+				window.draw(text);
+			}
+		}
+
+		window.display();
+	}
+
+	return 0;
 }

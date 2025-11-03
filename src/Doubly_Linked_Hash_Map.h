@@ -20,7 +20,7 @@ class Doubly_Linked_Hash_Map{
       Key prev = NULL_KEY;
       Value value = Value{};
     };
-  private:
+  protected:
     static constexpr Key NULL_KEY = std::numeric_limits<Key>::max();
     size_t node_count;
     Funnel_Hash_Map<Key, NodeProps> umap;
@@ -207,14 +207,10 @@ class Doubly_Linked_Hash_Map{
         }
     };
 
-    // Patched by Kwan (This fixes "Emplace failed: the hash table is full" bugs)
-    //explicit Doubly_Linked_Hash_Map(size_t N) : node_count(0), umap(N, 0.9), head(NULL_KEY), tail(NULL_KEY) {}
-    explicit Doubly_Linked_Hash_Map(size_t N) : node_count(0), umap(N), head(NULL_KEY), tail(NULL_KEY) {}
+    explicit Doubly_Linked_Hash_Map(size_t N) : node_count(0),
+      umap(N), head(NULL_KEY), tail(NULL_KEY)
+    {}
 
-    // explicit Doubly_Linked_Hash_Map(size_t N) :
-    //   node_count(0), umap(N),
-    //   head(NULL_KEY), tail(NULL_KEY)
-    // {}
 
     Doubly_Linked_Hash_Map(const Doubly_Linked_Hash_Map& other_Doubly_Linked_Hash_Map) :
       node_count(0), umap(other_Doubly_Linked_Hash_Map.umap),

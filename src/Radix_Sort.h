@@ -6,33 +6,36 @@
 #include <type_traits>
 
 // Getter can be a lambda, functor, or any object with overloaded operator()
-template <typename BidirectionalIt, typename Getter>
-void radix_sort(BidirectionalIt begin, BidirectionalIt end, Getter get_value) {
-    // Compile-time check for iterator type
+template <typename RandomAccessIt, typename Getter>
+void radix_sort(RandomAccessIt begin, RandomAccessIt end, Getter get_value) {
+    // Compile-time check: Requires Random Access for square bracket overload indexing and O(1) distance.
     static_assert(
         std::is_base_of<
-            std::bidirectional_iterator_tag,
-            typename std::iterator_traits<BidirectionalIt>::iterator_category
+            std::random_access_iterator_tag,
+            typename std::iterator_traits<RandomAccessIt>::iterator_category
         >::value,
-        "Radix sort requires at least a bidirectional iterator."
+        "Radix sort optimization requires at least a random access iterator."
     );
 
-    auto range_size = std::distance(begin, end);
+    size_t range_size = std::distance(begin, end);
     if (range_size <= 1) return;
 
-    using Value = typename std::iterator_traits<BidirectionalIt>::value_type;
+    using Value = typename std::iterator_traits<RandomAccessIt>::value_type;
     using AnySignedInt = decltype(get_value(*begin));
     using AnyUnsignedInt = std::make_unsigned_t<AnySignedInt>;
 
     constexpr AnyUnsignedInt SIGN_BIT_MASK = AnyUnsignedInt(1) << (sizeof(AnySignedInt) * 8 - 1);
 
-    // Convert signed int to unsigned int
+    // Convert signed int to unsigned int for correct sorting
     auto get_converted_value = [&](const Value& item) {
         AnySignedInt signed_val = get_value(item);
-        return (AnyUnsignedInt)(signed_val) ^ SIGN_BIT_MASK; // Cast to unsigned, then flip the sign bit
+        return (AnyUnsignedInt)(signed_val) ^ SIGN_BIT_MASK;
     };
 
-    std::vector<Value> output(range_size);
+    std::vector<Value> buffer(range_size);
+
+    auto* src = &(*begin);
+    auto* dest = buffer.data();
 
     constexpr int num_passes = sizeof(AnySignedInt);
 
@@ -40,48 +43,43 @@ void radix_sort(BidirectionalIt begin, BidirectionalIt end, Getter get_value) {
         size_t count[256] = {0};
         int shift = pass * 8;
 
-        // 1. Count instances of each byte
-        for (BidirectionalIt it = begin; it != end; ++it) {
-            AnyUnsignedInt val = get_converted_value(*it);
-            // Get the 'pass'-th byte
+        for (size_t i = 0; i < range_size; ++i) {
+            AnyUnsignedInt val = get_converted_value(src[i]);
             int digit = (val >> shift) & 0xFF;
             ++count[digit];
         }
 
-        // 2. Total count (prefix sum)
         for (int i = 1; i < 256; i++) {
             count[i] += count[i - 1];
         }
 
-        // 3. Build output array (backward pass)
-        using ReverseIt = std::reverse_iterator<BidirectionalIt>;
-        ReverseIt r_begin(end);
-        ReverseIt r_end(begin);
-
-        for (ReverseIt it = r_begin; it != r_end; ++it) {
-            AnyUnsignedInt val = get_converted_value(*it);
+        for (size_t i = range_size; i > 0; --i) {
+            AnyUnsignedInt val = get_converted_value(src[i - 1]);
             int digit = (val >> shift) & 0xFF;
 
-            output[count[digit] - 1] = *it;
+            dest[count[digit] - 1] = std::move(src[i - 1]);
             --count[digit];
         }
 
-        // 4. Copy back
-        std::copy(output.begin(), output.end(), begin);
+        std::swap(src, dest);
+    }
+
+    if (num_passes % 2 != 0) {
+        std::copy(src, src + range_size, dest);
     }
 }
 
-template <typename BidirectionalIt>
-void radix_sort(BidirectionalIt begin, BidirectionalIt end) {
+template <typename RandomAccessIt>
+void radix_sort(RandomAccessIt begin, RandomAccessIt end) {
     static_assert(
         std::is_base_of<
-            std::bidirectional_iterator_tag,
-            typename std::iterator_traits<BidirectionalIt>::iterator_category
+            std::random_access_iterator_tag,
+            typename std::iterator_traits<RandomAccessIt>::iterator_category
         >::value,
-        "Radix sort requires at least a bidirectional iterator."
+        "Radix sort optimization requires at least a random access iterator."
     );
 
-    using Value = typename std::iterator_traits<BidirectionalIt>::value_type;
+    using Value = typename std::iterator_traits<RandomAccessIt>::value_type;
 
     static_assert(
         std::is_integral<Value>::value,
