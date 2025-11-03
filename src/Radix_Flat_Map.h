@@ -18,17 +18,18 @@ class Radix_Flat_Map{
     explicit Radix_Flat_Map(input_iterator begin, input_iterator end)
     : radix_flat_map(begin, end){
         radix_sort(radix_flat_map.begin(),radix_flat_map.end(), [](const auto& p) { return p.first; });
-        remove_duplicates();
+        remove_duplicates(radix_flat_map, [](const auto& p) { return p.first; });
     }
 
-    void remove_duplicates() {
-        if (radix_flat_map.empty()) return;
+    template<typename AnyVector, typename Getter>
+    void remove_duplicates(AnyVector& vec2remdups, Getter get_key) {
+        if (vec2remdups.empty()) return;
 
-        auto write_pos = radix_flat_map.begin();
-        auto read_pos = radix_flat_map.begin() + 1;
+        auto write_pos = vec2remdups.begin();
+        auto read_pos = vec2remdups.begin() + 1;
 
-        while (read_pos != radix_flat_map.end()) {
-            if (write_pos->first != read_pos->first) {
+        while (read_pos != vec2remdups.end()) {
+            if (get_key(*write_pos) != get_key(*read_pos)) {
                 ++write_pos;
                 if (write_pos != read_pos) {
                     *write_pos = std::move(*read_pos);
@@ -37,7 +38,7 @@ class Radix_Flat_Map{
             ++read_pos;
         }
 
-        radix_flat_map.erase(write_pos + 1, radix_flat_map.end());
+        vec2remdups.erase(write_pos + 1, vec2remdups.end());
     }
 
     size_t lower_bound_binary_search(const Key& key2find) {
@@ -72,6 +73,17 @@ class Radix_Flat_Map{
         return low;
     }
 
+    Value& operator[](const Key& key) {
+        size_t pos = lower_bound_binary_search(key);
+
+        if (pos < radix_flat_map.size() and radix_flat_map[pos].first == key) {
+            return radix_flat_map[pos].second;
+        }
+
+        auto it = radix_flat_map.emplace(radix_flat_map.begin() + pos, key, Value{});
+        return it->second;
+    }
+
     bool insert(const std::pair<Key, Value>& map_pair) {
         return insert(map_pair.first, map_pair.second);
     }
@@ -89,7 +101,7 @@ class Radix_Flat_Map{
         return true;
     }
 
-    bool remove(const Key& key){
+    bool erase(const Key& key){
         size_t pos = lower_bound_binary_search(key);
 
         //check if key doesn't exist
@@ -99,6 +111,14 @@ class Radix_Flat_Map{
 
         radix_flat_map.erase(radix_flat_map.begin() + pos);
         return true;
+    }
+
+    iterator find(const Key& key) {
+        size_t pos = lower_bound_binary_search(key);
+        if (pos < radix_flat_map.size() and radix_flat_map[pos].first == key) {
+            return radix_flat_map.begin() + pos;
+        }
+        return this->end();
     }
 
     iterator predecessor(const Key& key){
@@ -131,7 +151,45 @@ class Radix_Flat_Map{
     void insert_batch(InputIter begin, InputIter end) {
         radix_flat_map.insert(radix_flat_map.end(), begin, end);
         radix_sort(radix_flat_map.begin(),radix_flat_map.end(), [](const auto& p) { return p.first; });
-        remove_duplicates();
+        remove_duplicates(radix_flat_map, [](const auto& p) { return p.first; });
+    }
+
+    template<typename InputIter>
+    void erase_batch(InputIter begin, InputIter end) {
+        std::vector<Key> keys2erase(begin, end);
+        radix_sort(keys2erase.begin(),keys2erase.end(), [](const Key& key) { return key; });
+        remove_duplicates(keys2erase, [](const Key& key) { return key; });
+
+        //Perform the 2-pointer filter algorithm
+        auto read_iter = radix_flat_map.begin();
+        auto write_iter = radix_flat_map.begin();
+        auto key2erase_iter = keys2erase.begin();
+
+        while (read_iter != radix_flat_map.end()) {
+            if (key2erase_iter == keys2erase.end()) {
+                if (write_iter != read_iter) {
+                    *write_iter = std::move(*read_iter);
+                }
+                ++write_iter;
+                ++read_iter;
+            }
+            else if (read_iter->first < *key2erase_iter) {
+                if (write_iter != read_iter) {
+                    *write_iter = std::move(*read_iter);
+                }
+                ++write_iter;
+                ++read_iter;
+            }
+            else if (read_iter->first == *key2erase_iter) {
+                ++read_iter;
+                ++key2erase_iter;
+            }
+            else {
+                ++key2erase_iter;
+            }
+        }
+
+        radix_flat_map.erase(write_iter, radix_flat_map.end());
     }
 
     // Iterator methods

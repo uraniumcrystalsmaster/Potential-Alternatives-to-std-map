@@ -135,7 +135,7 @@ class XFastTrie{
 		}
 
 		// Patched by Kwan
-		bool remove(const Key& key) {
+		bool erase(const Key& key) {
 			const size_t internal_key = key2Internal(key);
 
 			iter_lowest_level node_to_remove = lowest_level.find(internal_key);

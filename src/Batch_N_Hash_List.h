@@ -1,6 +1,7 @@
 #ifndef UMAP_WITH_SORTER_H
 #define UMAP_WITH_SORTER_H
 #include <vector>
+#include <limits>
 #include "Doubly_Linked_Hash_Map.h"
 #include "Radix_Sort.h"
 template<typename Key, typename Value>
@@ -9,19 +10,18 @@ class Batch_N_Hash_List : public Doubly_Linked_Hash_Map<Key, Value>{
         static constexpr Key NULL_KEY = std::numeric_limits<Key>::max();
         using Doubly_Linked_Hash_Map<Key, Value>::Doubly_Linked_Hash_Map;
         using omap_iter = typename Doubly_Linked_Hash_Map<Key, Value>::iterator;
+        using NodeProps = typename Doubly_Linked_Hash_Map<Key, Value>::NodeProps;
         Batch_N_Hash_List() : Doubly_Linked_Hash_Map<Key, Value>() {}
 
         void sort_keys(){
             // Convert umap to vector
-            std::vector<std::pair<const Key, Value>> sorted_pairs;
-            auto current_key = this->getHead();
-            while (current_key != NULL_KEY && sorted_pairs.size() < this->nodeCount()) {
-                auto it = this->find(current_key);
-                sorted_pairs.push_back({it->first, it->second.value});
-                current_key = it->second.next;
+            std::vector<std::pair<Key, Value>> sorted_pairs;
+            for (auto iter = this->begin(); iter != this->end(); ++iter) {
+                sorted_pairs.push_back({iter.key(), iter.value()});
             }
+
             // Sort
-            radix_sort(sorted_pairs.begin(),sorted_pairs.end());
+            radix_sort(sorted_pairs.begin(),sorted_pairs.end(), [](const auto& p) { return p.first; }); // <-- FIX (add lambda)
 
             // Convert vector to umap
             rebuild_sorted_links(sorted_pairs);
@@ -45,7 +45,7 @@ class Batch_N_Hash_List : public Doubly_Linked_Hash_Map<Key, Value>{
         }
         */
 
-    void rebuild_sorted_links(const std::vector<std::pair<const Key, Value>>& sorted_pairs) {
+        void rebuild_sorted_links(const std::vector<std::pair<Key, Value>>& sorted_pairs) {
             if (sorted_pairs.empty()) {
                 this->head = NULL_KEY;
                 this->tail = NULL_KEY;
@@ -56,24 +56,26 @@ class Batch_N_Hash_List : public Doubly_Linked_Hash_Map<Key, Value>{
             size_t N = sorted_pairs.size();
             this->head = sorted_pairs.front().first;
             this->tail = sorted_pairs.back().first;
+            this->node_count = N; // <-- BUG FIX: Don't set count to 0
 
             for (size_t i = 0; i < N; ++i) {
                 Key current_key = sorted_pairs[i].first;
 
-                auto it = this->find(current_key);
+                // Get the NodeProps struct directly from umap
+                NodeProps& node = this->umap.find(current_key)->second;
 
                 if (i < N - 1) {
                     Key next_key = sorted_pairs[i + 1].first;
-                    it->second.next = next_key;
+                    node.next = next_key; // <-- FIX
                 } else {
-                    it->second.next = NULL_KEY;
+                    node.next = NULL_KEY; // <-- FIX
                 }
 
                 if (i > 0) {
                     Key prev_key = sorted_pairs[i - 1].first;
-                    it->second.prev = prev_key;
+                    node.prev = prev_key; // <-- FIX
                 } else {
-                    it->second.prev = NULL_KEY;
+                    node.prev = NULL_KEY; // <-- FIX
                 }
             }
         }
@@ -82,16 +84,31 @@ class Batch_N_Hash_List : public Doubly_Linked_Hash_Map<Key, Value>{
             this->sort_keys();
             omap_iter node = this->find(key);
             if(node == this->end()) {
-				omap_iter pred = this->end();
+                omap_iter successor_node = this->end();
                 for(omap_iter iter = this->begin(); iter != this->end(); ++iter) {
-                    if(key < iter->first) {
-                        return pred;
+                    if(key < iter.key()) {
+                        successor_node = iter; // Found the crossover
+                        break;                 // <-- Exit the loop
                     }
-					pred = iter;
                 }
-				return pred;
+
+                if (successor_node == this->end()) {
+                    return this->find(this->getTail());
+                }
+
+                if (successor_node.key() == this->getHead()) {
+                    return this->end();
+                }
+
+                Key prev_key = this->umap.find(successor_node.key())->second.prev;
+                return this->find(prev_key);
             }
-            return node;
+
+            Key prev_key = this->umap.find(node.key())->second.prev;
+            if (prev_key == NULL_KEY) {
+                return this->end();
+            }
+            return this->find(prev_key);
         }
 
         omap_iter successor(const Key& key) {
@@ -99,18 +116,22 @@ class Batch_N_Hash_List : public Doubly_Linked_Hash_Map<Key, Value>{
             omap_iter node = this->find(key);
             if(node == this->end()) {
                 for(omap_iter iter = this->begin(); iter != this->end(); ++iter) {
-                    if(key < iter->first) {
+                    if(key < iter.key()) {
                         return iter;
                     }
                 }
+                return this->end();
             }
-            return node;
+            Key next_key = this->umap.find(node.key())->second.next;
+            if (next_key == NULL_KEY) {
+                return this->end();
+            }
+            return this->find(next_key);
         }
-
 
         std::vector<omap_iter> batch_predecessors(std::vector<Key>& keys) {
             this->sort_keys();
-            radix_sort(keys.begin(),keys.end());
+            radix_sort(keys.begin(),keys.end(), [](const Key& key) { return key; });
 
             std::vector<omap_iter> results;
             results.reserve(keys.size());
@@ -119,7 +140,7 @@ class Batch_N_Hash_List : public Doubly_Linked_Hash_Map<Key, Value>{
             omap_iter curr_pred = this->end();
 
             for(size_t i = 0; i < keys.size(); i++){
-                while (map_iter != this->end() and map_iter->first <= keys[i]) {
+                while (map_iter != this->end() and map_iter.key() < keys[i]) {
                     curr_pred = map_iter;
                     ++map_iter;
                 }
@@ -130,7 +151,7 @@ class Batch_N_Hash_List : public Doubly_Linked_Hash_Map<Key, Value>{
 
         std::vector<omap_iter> batch_successors(std::vector<Key>& keys) {
             this->sort_keys();
-            radix_sort(keys.begin(),keys.end());
+            radix_sort(keys.begin(),keys.end(), [](const Key& key) { return key; });
 
             std::vector<omap_iter> results;
             results.reserve(keys.size());
@@ -138,7 +159,7 @@ class Batch_N_Hash_List : public Doubly_Linked_Hash_Map<Key, Value>{
             omap_iter map_iter = this->begin();
 
             for(size_t i = 0; i < keys.size(); i++){
-                while (map_iter != this->end() and map_iter->first < keys[i]) {
+                while (map_iter != this->end() and map_iter.key() <= keys[i]) {
                     ++map_iter;
                 }
                 results.push_back(map_iter);
