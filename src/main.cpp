@@ -17,22 +17,22 @@
 #include "Treap.h" //should have lowest constant factors
 
 sf::VertexArray createPlot(const std::vector<sf::Vector2f>& points, float max_x, float max_y,
-						   const sf::Color& color, float width, float height, float padding) {
+						   const sf::Color& color, float plot_width, float height, float padding, float x_offset) {
 	sf::VertexArray plot(sf::LinesStrip);
-	float plotWidth = width - 2 * padding;
+	float plotWidth = plot_width - 2 * padding;
 	float plotHeight = height - 2 * padding;
 
 	for (const auto& p : points) {
 		// Scale and shift coordinaates to fit the plot area
-		float x = padding + (p.x / max_x) * plotWidth;
+		float x = x_offset + padding + (p.x / max_x) * plotWidth;
 		float y = padding + plotHeight - (p.y / max_y) * plotHeight; // Y is inverted
 		plot.append(sf::Vertex(sf::Vector2f(x, y), color));
 	}
 	return plot;
 }
 
-constexpr size_t Xpoint_MAX = 40000;
-constexpr size_t STRIDE = 4000;
+constexpr size_t Xpoint_MAX = 1000;
+constexpr size_t STRIDE = Xpoint_MAX/10;
 
 enum class QueryType {
 	INSERT,
@@ -77,7 +77,7 @@ void runBenchmarks(QueryType queryType,
 	hash_avl_points.clear();
 	treap_points.clear();
 
-	for(size_t i = 1; i <= Xpoint_MAX; i += STRIDE) {
+	for(size_t i = 1; i <= Xpoint_MAX+1; i += STRIDE) {
 		// Init maps
 		std::map<size_t,int> stl_map;
 		Radix_Flat_Map<size_t,int> rf_map;
@@ -492,65 +492,87 @@ void runBenchmarks(QueryType queryType,
 			}
 
 			case QueryType::RANGE: {
-				// For range queries, iterate through entire data structure
-				size_t range_size = std::max(size_t(1), i / 10);
-
 				// standard library map
-				start = std::chrono::high_resolution_clock::now();
+				auto stl_end = stl_map.begin();
 				for(size_t j = 0; j < i; j++) {
-					auto it1 = stl_map.lower_bound(query_dataset.random_size_ts[j]);
-					auto it2 = stl_map.upper_bound(query_dataset.random_size_ts[j] + range_size);
-					// Iterate through range
-					for(auto it = it1; it != it2; ++it) {}
+					++stl_end;
 				}
+				start = std::chrono::high_resolution_clock::now();
+				for(auto iter = stl_map.begin(); iter != stl_end; ++iter) {}
 				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
 				stl_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
 
 				// radix flat map
+				auto rf_end = rf_map.begin() + i;
 				start = std::chrono::high_resolution_clock::now();
-				for(auto iter = rf_map.begin(); iter != rf_map.end(); ++iter) {}
+				for(auto iter = rf_map.begin(); iter != rf_end; ++iter) {}
 				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
 				rf_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
 
 				// radix flat map batch
+				auto rf_batch_end = rf_batch_map.begin() + i;
 				start = std::chrono::high_resolution_clock::now();
-				for(auto iter = rf_batch_map.begin(); iter != rf_batch_map.end(); ++iter) {}
+				for(auto iter = rf_batch_map.begin(); iter != rf_batch_end; ++iter) {}
 				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
 				rf_batch_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
 
 				// batch N Hash list
+				auto hl_batch_end = bnhl.begin();
+				for(size_t j = 0; j < i; j++) {
+					++hl_batch_end;
+				}
 				start = std::chrono::high_resolution_clock::now();
-				for(auto iter = bnhl.begin(); iter != bnhl.end(); ++iter) {}
+				for(auto iter = bnhl.begin(); iter != hl_batch_end; ++iter) {}
 				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
 				bnhl_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
 
 				// hash list
+				auto hl_end = hash_list.begin();
+				for(size_t j = 0; j < i; j++) {
+					++hl_end;
+				}
 				start = std::chrono::high_resolution_clock::now();
-				for(auto iter = hash_list.begin(); iter != hash_list.end(); ++iter) {}
+				for(auto iter = hash_list.begin(); iter != hl_end; ++iter) {}
 				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
 				hash_list_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
 
 				// X-fast trie
+				auto xft_end = xft.begin();
+				for(size_t j = 0; j < i; j++) {
+					++xft_end;
+				}
 				start = std::chrono::high_resolution_clock::now();
-				for(auto iter = xft.begin(); iter != xft.end(); ++iter) {}
+				for(auto iter = xft.begin(); iter != xft_end; ++iter) {}
 				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
 				xft_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
 
 				// AVL tree
+				auto avlt_end = avl_tree.begin();
+				for(size_t j = 0; j < i; j++) {
+					++avlt_end;
+				}
 				start = std::chrono::high_resolution_clock::now();
-				for(auto iter = avl_tree.begin(); iter != avl_tree.end(); ++iter) {}
+				for(auto iter = avl_tree.begin(); iter != avlt_end; ++iter) {}
 				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
 				avl_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
 
 				// Hash map AVL tree
+				auto hmavlt_end = hash_avl_tree.begin();
+				for(size_t j = 0; j < i; j++) {
+					++hmavlt_end;
+				}
 				start = std::chrono::high_resolution_clock::now();
-				for(auto iter = hash_avl_tree.begin(); iter != hash_avl_tree.end(); ++iter) {}
+				for(auto iter = hash_avl_tree.begin(); iter != hmavlt_end; ++iter) {}
 				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
 				hash_avl_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
 
 				// Treap
+				auto treap_end = treap.begin();
+				for(size_t j = 0; j < i; j++) {
+					++treap_end;
+				}
 				start = std::chrono::high_resolution_clock::now();
-				for(auto iter = treap.begin(); iter != treap.end(); ++iter) {}
+				for(auto iter = treap.begin(); iter != treap_end; ++iter) {}
 				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
 				treap_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
 				break;
@@ -656,13 +678,29 @@ int main() {
 	recalculateCombinedTimes(); // Initial calculation with just INSERT selected
 
 
-	// SFML Plotting
-	constexpr float WIN_WIDTH = 1000.0f;
-	constexpr float WIN_HEIGHT = 800.0f;
+	// SFML Plotting - Initial dimensions
+	float WIN_WIDTH = 1080.0f;
+	float UI_WIDTH = 350.0f;
+	float PLOT_WIDTH = WIN_WIDTH - UI_WIDTH;
+	float WIN_HEIGHT = PLOT_WIDTH;
 	constexpr float PADDING = 60.0f;
 
-	sf::RenderWindow window(sf::VideoMode(static_cast<unsigned int>(WIN_WIDTH), static_cast<unsigned int>(WIN_HEIGHT)), "Map Insertion Benchmark");
+	sf::RenderWindow window(sf::VideoMode(static_cast<unsigned int>(WIN_WIDTH), static_cast<unsigned int>(WIN_HEIGHT)), "Map Insertion Benchmark", sf::Style::Default);
 	window.setFramerateLimit(60);
+
+	// Function to update dimensions when window is resized
+	auto updateDimensions = [&]() {
+		sf::Vector2u size = window.getSize();
+		WIN_WIDTH = static_cast<float>(size.x);
+		WIN_HEIGHT = static_cast<float>(size.y);
+		// Keep UI_WIDTH proportional or fixed
+		if (WIN_WIDTH < 800) {
+			UI_WIDTH = WIN_WIDTH * 0.3f; // Proportional for small windows
+		} else {
+			UI_WIDTH = 350.0f; // Fixed for normal/large windows
+		}
+		PLOT_WIDTH = WIN_WIDTH - UI_WIDTH;
+	};
 
 	// Track visibility and data for each plot
 	struct PlotInfo {
@@ -698,7 +736,7 @@ int main() {
 	float max_x = static_cast<float>(Xpoint_MAX);
 
 	// Function to regenerate all plots
-	auto regeneratePlots = [&plots, &max_x, WIN_WIDTH, WIN_HEIGHT, PADDING]() {
+	auto regeneratePlots = [&plots, &max_x, &PLOT_WIDTH, &WIN_HEIGHT, &PADDING, &UI_WIDTH]() {
 		float max_y = 0.000001f;
 		for (const auto& plot : plots) {
 			if (plot.visible) {
@@ -711,7 +749,7 @@ int main() {
 		}
 
 		for (auto& plot : plots) {
-			*plot.vertexArray = createPlot(*plot.points, max_x, max_y, plot.color, WIN_WIDTH, WIN_HEIGHT, PADDING);
+			*plot.vertexArray = createPlot(*plot.points, max_x, max_y, plot.color, PLOT_WIDTH, WIN_HEIGHT, PADDING, UI_WIDTH);
 		}
 
 		return max_y;
@@ -719,14 +757,19 @@ int main() {
 
 	float max_y = regeneratePlots();
 
-	// Create axises
+	// Create axes (only in plot area on the right)
 	sf::VertexArray axes(sf::Lines);
 	// Y-Axis
-	axes.append(sf::Vertex(sf::Vector2f(PADDING, PADDING), sf::Color::White));
-	axes.append(sf::Vertex(sf::Vector2f(PADDING, WIN_HEIGHT - PADDING), sf::Color::White));
+	axes.append(sf::Vertex(sf::Vector2f(UI_WIDTH + PADDING, PADDING), sf::Color::White));
+	axes.append(sf::Vertex(sf::Vector2f(UI_WIDTH + PADDING, WIN_HEIGHT - PADDING), sf::Color::White));
 	// X-Axis
-	axes.append(sf::Vertex(sf::Vector2f(PADDING, WIN_HEIGHT - PADDING), sf::Color::White));
+	axes.append(sf::Vertex(sf::Vector2f(UI_WIDTH + PADDING, WIN_HEIGHT - PADDING), sf::Color::White));
 	axes.append(sf::Vertex(sf::Vector2f(WIN_WIDTH - PADDING, WIN_HEIGHT - PADDING), sf::Color::White));
+
+	// Vertical separator line between UI and plot
+	sf::VertexArray separator(sf::Lines);
+	separator.append(sf::Vertex(sf::Vector2f(UI_WIDTH, 0), sf::Color(80, 80, 80)));
+	separator.append(sf::Vertex(sf::Vector2f(UI_WIDTH, WIN_HEIGHT), sf::Color(80, 80, 80)));
 
 	// Load Font
 	sf::Font font;
@@ -747,6 +790,7 @@ int main() {
 
 	// Create Labels
 	sf::Text title, y_label, x_label, max_y_label, max_x_label;
+	sf::Text legend_label;  // New label for legend
 	std::vector<sf::Text> legend_texts;
 	std::vector<sf::CircleShape> legend_circles;
 
@@ -758,12 +802,12 @@ int main() {
 		y_label.setString("Time (s)");
 		y_label.setCharacterSize(16);
 		y_label.setRotation(-90);
-		y_label.setPosition(PADDING / 2.5f, WIN_HEIGHT / 2.0f + y_label.getGlobalBounds().width / 2.0f);
+		y_label.setPosition(UI_WIDTH + PADDING / 2.5f, WIN_HEIGHT / 2.0f + y_label.getGlobalBounds().width / 2.0f);
 
 		x_label.setFont(font);
 		x_label.setString("N (unsigned int)");
 		x_label.setCharacterSize(16);
-		x_label.setPosition(WIN_WIDTH / 2.0f - x_label.getGlobalBounds().width / 2.0f, WIN_HEIGHT - PADDING / 1.5f);
+		x_label.setPosition(UI_WIDTH + PLOT_WIDTH / 2.0f - x_label.getGlobalBounds().width / 2.0f, WIN_HEIGHT - PADDING / 1.5f);
 
 		max_x_label.setFont(font);
 		max_x_label.setString(std::to_string(Xpoint_MAX));
@@ -776,11 +820,18 @@ int main() {
 		max_y_label.setFont(font);
 		max_y_label.setString(ss.str() + "s");
 		max_y_label.setCharacterSize(12);
-		max_y_label.setPosition(PADDING + 5, PADDING - 5);
+		max_y_label.setPosition(UI_WIDTH + PADDING + 5, PADDING - 5);
 
-		// Legend with circles
-		float legend_x = PADDING + 20.0f;
-		float legend_y = PADDING + 20.0f;
+		// Legend label
+		legend_label.setFont(font);
+		legend_label.setString("Legend (Click circles to toggle lines):");
+		legend_label.setCharacterSize(14);
+		legend_label.setPosition(11.0f, 20.0f);
+		legend_label.setFillColor(sf::Color::White);
+
+		// Legend with circles (now in UI section on the left, shifted down)
+		float legend_x = 5.0f;
+		float legend_y = 44.0f;  // Shifted down from 20 to 44 to make room for label
 		float circle_radius = 6.0f;
 
 		for (size_t i = 0; i < plots.size(); ++i) {
@@ -801,25 +852,28 @@ int main() {
 		}
 	}
 
-	// Query Type Selection Buttons
+	// Query Type Selection Buttons (now in UI section on the left)
 	std::vector<sf::RectangleShape> query_buttons;
 	std::vector<sf::Text> query_button_texts;
 
 	sf::Text query_selector_label;
-	float selector_x = PADDING + 20.0f;
-	float selector_y = PADDING + 20.0f + plots.size() * 20 + 30;
-	float button_width = 95.0f;
-	float button_height = 25.0f;
+	float selector_x = 11.0f;  // 11 pixels from left edge
+	float selector_y = 44.0f + plots.size() * 20 + 38;  // Adjusted for shifted legend (was 20.0f)
 	float button_spacing = 5.0f;
+	// Calculate button width with 11px margins on each side
+	float ui_section_width = UI_WIDTH - 22.0f;  // Minus 11px on each side
+	float button_width = (ui_section_width - 2 * button_spacing) / 3.0f;  // 3 columns with 2 gaps
+	float button_height = 25.0f;
 
 	if (font_loaded) {
 		query_selector_label.setFont(font);
 		query_selector_label.setString("Query Types (click to toggle):");
 		query_selector_label.setCharacterSize(14);
-		query_selector_label.setPosition(selector_x, selector_y - 20);
+		query_selector_label.setPosition(selector_x, selector_y - 24);  // Increased from -20 to -24 for 4 more pixels
 		query_selector_label.setFillColor(sf::Color::White);
 
 		for (size_t i = 0; i < all_query_types.size(); ++i) {
+			// Arrange buttons in 3x2 grid
 			float x_offset = (i % 3) * (button_width + button_spacing);
 			float y_offset = (i / 3) * (button_height + button_spacing);
 
@@ -857,37 +911,90 @@ int main() {
 		}
 	}
 
-	// Function to generate title based on selected queries
+	// Function to generate title
 	auto generateTitle = [&]() -> std::string {
-		std::string title_str = "Queries: ";
-		std::vector<std::string> selected_names;
-		for (const auto& qt : all_query_types) {
-			if (selectedQueries[qt]) {
-				selected_names.push_back(queryTypeToString(qt));
-			}
-		}
-
-		if (selected_names.empty()) {
-			title_str += "None";
-		} else if (selected_names.size() == 1) {
-			title_str += selected_names[0];
-		} else {
-			for (size_t i = 0; i < selected_names.size(); ++i) {
-				title_str += selected_names[i];
-				if (i < selected_names.size() - 1) {
-					title_str += " + ";
-				}
-			}
-		}
-		title_str += " - N unsigned int (Max N = " + std::to_string(Xpoint_MAX) + ")";
-		return title_str;
+		return "Queries - N unsigned ints (Max N = " + std::to_string(Xpoint_MAX) + ")";
 	};
 
-	// Set initial title
+	// Set initial title (centered over plot area on the right)
 	if (font_loaded) {
 		title.setString(generateTitle());
-		title.setPosition(WIN_WIDTH / 2.0f - title.getGlobalBounds().width / 2.0f, PADDING / 4.0f);
+		title.setPosition(UI_WIDTH + PLOT_WIDTH / 2.0f - title.getGlobalBounds().width / 2.0f, PADDING / 4.0f);
 	}
+
+	// Create cursor coordinate texts
+	sf::Text cursor_x_text, cursor_y_text;
+	sf::Color light_blue(100, 180, 255);
+	if (font_loaded) {
+		cursor_x_text.setFont(font);
+		cursor_x_text.setCharacterSize(14);
+		cursor_x_text.setFillColor(light_blue);
+
+		cursor_y_text.setFont(font);
+		cursor_y_text.setCharacterSize(14);
+		cursor_y_text.setFillColor(light_blue);
+	}
+
+	// Function to recalculate all UI element positions
+	auto recalculateUIPositions = [&]() {
+		// Update separator
+		separator.clear();
+		separator.append(sf::Vertex(sf::Vector2f(UI_WIDTH, 0), sf::Color(80, 80, 80)));
+		separator.append(sf::Vertex(sf::Vector2f(UI_WIDTH, WIN_HEIGHT), sf::Color(80, 80, 80)));
+
+		// Update axes
+		axes.clear();
+		axes.append(sf::Vertex(sf::Vector2f(UI_WIDTH + PADDING, PADDING), sf::Color::White));
+		axes.append(sf::Vertex(sf::Vector2f(UI_WIDTH + PADDING, WIN_HEIGHT - PADDING), sf::Color::White));
+		axes.append(sf::Vertex(sf::Vector2f(UI_WIDTH + PADDING, WIN_HEIGHT - PADDING), sf::Color::White));
+		axes.append(sf::Vertex(sf::Vector2f(WIN_WIDTH - PADDING, WIN_HEIGHT - PADDING), sf::Color::White));
+
+		if (font_loaded) {
+			// Update labels
+			y_label.setPosition(UI_WIDTH + PADDING / 2.5f, WIN_HEIGHT / 2.0f + y_label.getGlobalBounds().width / 2.0f);
+			x_label.setPosition(UI_WIDTH + PLOT_WIDTH / 2.0f - x_label.getGlobalBounds().width / 2.0f, WIN_HEIGHT - PADDING / 1.5f);
+			max_x_label.setPosition(WIN_WIDTH - PADDING - max_x_label.getGlobalBounds().width - 5, WIN_HEIGHT - PADDING + 5);
+			max_y_label.setPosition(UI_WIDTH + PADDING + 5, PADDING - 5);
+			title.setPosition(UI_WIDTH + PLOT_WIDTH / 2.0f - title.getGlobalBounds().width / 2.0f, PADDING / 4.0f);
+
+			// Update legend circles and texts
+			float legend_x = 5.0f;
+			float legend_y = 44.0f;
+			float circle_radius = 6.0f;
+			for (size_t i = 0; i < legend_circles.size(); ++i) {
+				legend_circles[i].setPosition(legend_x, legend_y + i * 20 + 3);
+				legend_texts[i].setPosition(legend_x + circle_radius * 2 + 5, legend_y + i * 20);
+			}
+
+			// Update query buttons and texts
+			float selector_x = 11.0f;
+			float selector_y = 44.0f + plots.size() * 20 + 38;
+			float button_spacing = 5.0f;
+			float ui_section_width = UI_WIDTH - 22.0f;
+			float button_width = (ui_section_width - 2 * button_spacing) / 3.0f;
+			float button_height = 25.0f;
+
+			query_selector_label.setPosition(selector_x, selector_y - 24);
+
+			for (size_t i = 0; i < query_buttons.size(); ++i) {
+				float x_offset = (i % 3) * (button_width + button_spacing);
+				float y_offset = (i / 3) * (button_height + button_spacing);
+
+				query_buttons[i].setPosition(selector_x + x_offset, selector_y + y_offset);
+				query_buttons[i].setSize(sf::Vector2f(button_width, button_height));
+
+				// Recalculate text centering
+				sf::FloatRect text_bounds = query_button_texts[i].getLocalBounds();
+				query_button_texts[i].setPosition(
+					selector_x + x_offset + (button_width - text_bounds.width) / 2.0f - text_bounds.left,
+					selector_y + y_offset + (button_height - text_bounds.height) / 2.0f - text_bounds.top - 2
+				);
+			}
+		}
+
+		// Regenerate plots with new dimensions
+		max_y = regeneratePlots();
+	};
 
 	// Main SFML Loop
 	while (window.isOpen()) {
@@ -895,6 +1002,32 @@ int main() {
 		while (window.pollEvent(event)) {
 			if (event.type == sf::Event::Closed)
 				window.close();
+
+			if (event.type == sf::Event::Resized) {
+				sf::FloatRect visibleArea(0, 0, static_cast<float>(event.size.width), static_cast<float>(event.size.height));
+				window.setView(sf::View(visibleArea));
+
+				updateDimensions();
+				recalculateUIPositions();
+			}
+
+			if (event.type == sf::Event::KeyPressed) {
+				if (event.key.code == sf::Keyboard::F11) {
+					// Toggle fullscreen
+					static bool isFullscreen = false;
+					if (!isFullscreen) {
+						window.create(sf::VideoMode::getDesktopMode(), "Map Insertion Benchmark", sf::Style::Fullscreen);
+						window.setFramerateLimit(60);
+						isFullscreen = true;
+					} else {
+						window.create(sf::VideoMode(1080, 730), "Map Insertion Benchmark", sf::Style::Default);
+						window.setFramerateLimit(60);
+						isFullscreen = false;
+					}
+					updateDimensions();
+					recalculateUIPositions();
+				}
+			}
 
 			if (event.type == sf::Event::MouseButtonPressed) {
 				if (event.mouseButton.button == sf::Mouse::Left) {
@@ -930,7 +1063,7 @@ int main() {
 								max_y_label.setFont(font);
 								max_y_label.setString(ss.str() + "s");
 								max_y_label.setCharacterSize(12);
-								max_y_label.setPosition(PADDING + 5, PADDING - 5);
+								max_y_label.setPosition(UI_WIDTH + PADDING + 5, PADDING - 5);
 							}
 
 							circle_clicked = true;
@@ -958,16 +1091,12 @@ int main() {
 
 								max_y = regeneratePlots();
 
-								// Update title
+								// Update max_y label
 								if (font_loaded) {
-									title.setString(generateTitle());
-									title.setPosition(WIN_WIDTH / 2.0f - title.getGlobalBounds().width / 2.0f, PADDING / 4.0f);
-
-									// Update max_y label
 									std::stringstream ss;
 									ss << std::fixed << std::setprecision(4) << max_y;
 									max_y_label.setString(ss.str() + "s");
-									max_y_label.setPosition(PADDING + 5, PADDING - 5);
+									max_y_label.setPosition(UI_WIDTH + PADDING + 5, PADDING - 5);
 								}
 
 								break;
@@ -996,6 +1125,89 @@ int main() {
 			}
 		}
 
+		// Create crosshair cursor lines and coordinate display
+		bool cursor_in_plot_area = false;
+		sf::VertexArray cursor_lines(sf::Lines);
+		float plot_width = PLOT_WIDTH - 2 * PADDING;
+		float plot_height = WIN_HEIGHT - 2 * PADDING;
+
+		// Check if mouse is in the plot area on the right, and not in UI section on the left
+		if (mousePos.x >= UI_WIDTH + PADDING && mousePos.x <= WIN_WIDTH - PADDING &&
+			mousePos.y >= PADDING && mousePos.y <= WIN_HEIGHT - PADDING) {
+			cursor_in_plot_area = true;
+
+			// Calculate data coordinates from screen coordinates
+			float data_x = ((mousePos.x - UI_WIDTH - PADDING) / plot_width) * max_x;
+			float data_y = max_y - ((mousePos.y - PADDING) / plot_height) * max_y;
+
+			// Create dashed vertical and horizontal lines (cross-hair)
+			float dash_length = 8.0f;
+			float gap_length = 4.0f;
+			float segment_length = dash_length + gap_length;
+
+			// Vertical dashed line
+			for (float y = PADDING; y < WIN_HEIGHT - PADDING; y += segment_length) {
+				float end_y = std::min(y + dash_length, WIN_HEIGHT - PADDING);
+				cursor_lines.append(sf::Vertex(sf::Vector2f(mousePos.x, y), light_blue));
+				cursor_lines.append(sf::Vertex(sf::Vector2f(mousePos.x, end_y), light_blue));
+			}
+
+			// Horizontal dashed line (only in plot area)
+			for (float x = UI_WIDTH + PADDING; x < WIN_WIDTH - PADDING; x += segment_length) {
+				float end_x = std::min(x + dash_length, WIN_WIDTH - PADDING);
+				cursor_lines.append(sf::Vertex(sf::Vector2f(x, mousePos.y), light_blue));
+				cursor_lines.append(sf::Vertex(sf::Vector2f(end_x, mousePos.y), light_blue));
+			}
+
+			// Update coordinate text displays
+			if (font_loaded) {
+				// X coordinate text
+				std::stringstream x_ss;
+				x_ss << std::fixed << std::setprecision(1) << data_x;
+				cursor_x_text.setString(x_ss.str());
+
+				// Y coordinate text
+				std::stringstream y_ss;
+				y_ss << std::fixed << std::setprecision(6) << data_y;
+				cursor_y_text.setString(y_ss.str());
+
+				// Position both texts near the cursor with offset
+				float text_offset_x = 15.0f;
+				float text_offset_y = 15.0f;
+
+				// Get text dimensions for boundary checking
+				float x_text_width = cursor_x_text.getGlobalBounds().width;
+				float y_text_width = cursor_y_text.getGlobalBounds().width;
+				float text_height = cursor_x_text.getGlobalBounds().height;
+
+				// Position X text
+				float x_text_x = mousePos.x + text_offset_x;
+				float x_text_y = mousePos.y + text_offset_y;
+
+				// Keep X text within plot boundaries
+				if (x_text_x + x_text_width > WIN_WIDTH - PADDING - 5.0f) {
+					x_text_x = mousePos.x - text_offset_x - x_text_width;
+				}
+				if (x_text_y + text_height > WIN_HEIGHT - PADDING - 5.0f) {
+					x_text_y = mousePos.y - text_offset_y - text_height;
+				}
+				cursor_x_text.setPosition(x_text_x, x_text_y);
+
+				// Position Y text below X text
+				float y_text_x = mousePos.x + text_offset_x;
+				float y_text_y = mousePos.y + text_offset_y + text_height + 5.0f;
+
+				// Keep Y text within plot boundaries
+				if (y_text_x + y_text_width > WIN_WIDTH - PADDING - 5.0f) {
+					y_text_x = mousePos.x - text_offset_x - y_text_width;
+				}
+				if (y_text_y + text_height > WIN_HEIGHT - PADDING - 5.0f) {
+					y_text_y = mousePos.y - text_offset_y - text_height * 2 - 5.0f;
+				}
+				cursor_y_text.setPosition(y_text_x, y_text_y);
+			}
+		}
+
 		window.clear(sf::Color(10, 10, 30)); // Dark blue background
 
 		// Draw plots (only if visible)
@@ -1007,12 +1219,16 @@ int main() {
 
 		// Draw UI
 		window.draw(axes);
+		window.draw(separator);
 		if (font_loaded) {
 			window.draw(title);
 			window.draw(x_label);
 			window.draw(y_label);
 			window.draw(max_x_label);
 			window.draw(max_y_label);
+
+			// Draw legend label
+			window.draw(legend_label);
 
 			for (const auto& circle : legend_circles) {
 				window.draw(circle);
@@ -1028,6 +1244,15 @@ int main() {
 			}
 			for (const auto& text : query_button_texts) {
 				window.draw(text);
+			}
+		}
+
+		// Draw cursor crosshair and coordinates (only if in plot area)
+		if (cursor_in_plot_area) {
+			window.draw(cursor_lines);
+			if (font_loaded) {
+				window.draw(cursor_x_text);
+				window.draw(cursor_y_text);
 			}
 		}
 
