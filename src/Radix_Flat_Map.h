@@ -4,6 +4,8 @@
 #ifndef RADIX_FLAT_MAP_H
 #define RADIX_FLAT_MAP_H
 #include "Radix_Sort.h"
+#include <vector>
+#include <limits>
 
 template<typename Key, typename Value>
 class Radix_Flat_Map{
@@ -145,6 +147,21 @@ class Radix_Flat_Map{
 
     void reserve(const size_t N) {
         radix_flat_map.reserve(N);
+    }
+
+    size_t size() const noexcept {
+        return radix_flat_map.size();
+    }
+
+    size_t max_size() const noexcept {
+        return std::numeric_limits<std::ptrdiff_t>::max();
+    }
+
+    size_t count(const Key& key) const{
+        if(this->find(key) != this->end()){
+            return 1;
+        }
+        return 0;
     }
 
     template<typename InputIter>
