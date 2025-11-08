@@ -3,6 +3,7 @@
   <component name="VcsDirectoryMappings">
     <mapping directory="" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/cmake-build-debug/_deps/catch2-src" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/extern/sfml" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/submodules/FunnelHashMap" vcs="Git" />
   </component>
 </project>

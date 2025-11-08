@@ -5,7 +5,10 @@ set(CMAKE_CXX_STANDARD 14)
 
 #compile flags to match Gradescope test environment
 set(GCC_COVERAGE_COMPILE_FLAGS "-Wall -Werror")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}" )
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS}" )
+
+#Don't build SFML examples
+set(SFML_BUILD_EXAMPLES OFF CACHE INTERNAL "")
 
 ## --- pull in desired version of catch ---
 Include(FetchContent)
@@ -16,13 +19,9 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(Catch2)
 
-set(CMAKE_PREFIX_PATH "C:/SFML-2.5.1" ${CMAKE_PREFIX_PATH})
-
-# This command finds SFML. We will manually link to its files.
-find_package(SFML 2.5 REQUIRED graphics)
+add_subdirectory(extern/sfml)
 
 # --- Define Executables ---
-# Built from SOURCE (.cpp) files ONLY
 add_executable(Main
         src/main.cpp
 )
@@ -32,45 +31,48 @@ add_executable(Tests
 )
 
 # --- Add Include Paths to Targets ---
-# This tells the compiler where to find #included headers for EACH target
+# We ONLY need to add our project's headers.
+# SFML's headers are added automatically by target_link_libraries.
 target_include_directories(Main PRIVATE
-        ${PROJECT_SOURCE_DIR}/src       # Path to X-fast_Trie.h
-        submodules/FunnelHashMap/src  # Path to Funnel_Hash_Map.h
-        "C:/SFML-2.5.1/include"         # Use the explicit path, not ${SFML_DIR}
+        ${PROJECT_SOURCE_DIR}/src
+        submodules/FunnelHashMap/src
 )
 
 target_include_directories(Tests PRIVATE
-        ${PROJECT_SOURCE_DIR}/src       # Path to X-fast_Trie.h
-        submodules/FunnelHashMap/src  # Path to Funnel_Hash_Map.h
+        ${PROJECT_SOURCE_DIR}/src
+        submodules/FunnelHashMap/src
 )
-# Use explicit paths to the libraries, not ${SFML_DIR}
+
 target_link_libraries(Main PRIVATE
-        "C:/SFML-2.5.1/lib/libsfml-graphics-d.a"
-        "C:/SFML-2.5.1/lib/libsfml-window-d.a"
-        "C:/SFML-2.5.1/lib/libsfml-system-d.a"
+        sfml-graphics
+        sfml-window
+        sfml-system
 )
-# --- Link Libraries ---
+
 target_link_libraries(Tests PRIVATE Catch2::Catch2WithMain)
 
-# Use explicit paths for the DLLs, not ${SFML_DIR}
-add_custom_command(TARGET Main POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "C:/SFML-2.5.1/bin/sfml-graphics-d-2.dll"
-        $<TARGET_FILE_DIR:Main>
-)
-add_custom_command(TARGET Main POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "C:/SFML-2.5.1/bin/sfml-window-d-2.dll"
-        $<TARGET_FILE_DIR:Main>
-)
-add_custom_command(TARGET Main POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "C:/SFML-2.5.1/bin/sfml-system-d-2.dll"
-        $<TARGET_FILE_DIR:Main>
-)
+# --- OS-Specific DLL Copy (for Windows ONLY) ---
+# This block will be correctly skipped on your Mac.
+# On Windows, it copies the DLLs from your C: drive.
+if(WIN32)
+    add_custom_command(TARGET Main POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "C:/SFML-2.5.1/bin/sfml-graphics-d-2.dll"
+            $<TARGET_FILE_DIR:Main>
+    )
+    add_custom_command(TARGET Main POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "C:/SFML-2.5.1/bin/sfml-window-d-2.dll"
+            $<TARGET_FILE_DIR:Main>
+    )
+    add_custom_command(TARGET Main POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "C:/SFML-2.5.1/bin/sfml-system-d-2.dll"
+            $<TARGET_FILE_DIR:Main>
+    )
+endif()
 
 # comment everything below out if you are using CLion
 #include(CTest)
 #include(Catch)
 #catch_discover_tests(Tests)
-

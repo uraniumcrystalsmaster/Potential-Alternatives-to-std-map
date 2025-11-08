@@ -206,11 +206,11 @@ class XFastTrie{
 		}
 
 		bool contains(const Key& key){
-        	return lowest_level.contains(key2Internal(key));
+        	return lowest_level.find(key2Internal(key)) != lowest_level.end();
         }
 
 		bool contains(const Key& key) const{
-        	return lowest_level.contains(key2Internal(key));
+			return lowest_level.find(key2Internal(key)) != lowest_level.end();
         }
 
 	private:
