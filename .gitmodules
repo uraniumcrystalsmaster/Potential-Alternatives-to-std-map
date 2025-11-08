@@ -4,3 +4,6 @@
 [submodule "submodules/IndexResearch"]
 	path = submodules/IndexResearch
 	url = https://github.com/Spear-Neil/IndexResearch.git
+[submodule "extern/sfml"]
+	path = extern/sfml
+	url = https://github.com/SFML/SFML.git
