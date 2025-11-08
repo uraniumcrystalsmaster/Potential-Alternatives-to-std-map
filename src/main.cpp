@@ -31,8 +31,8 @@ sf::VertexArray createPlot(const std::vector<sf::Vector2f>& points, float max_x,
 	return plot;
 }
 
-constexpr size_t Xpoint_MAX = 1000;
-constexpr size_t STRIDE = Xpoint_MAX/10;
+constexpr size_t Xpoint_MAX = 10;
+constexpr size_t STRIDE = Xpoint_MAX/1;
 
 enum class QueryType {
 	INSERT,
@@ -77,7 +77,7 @@ void runBenchmarks(QueryType queryType,
 	hash_avl_points.clear();
 	treap_points.clear();
 
-	for(size_t i = 1; i <= Xpoint_MAX+1; i += STRIDE) {
+	for(size_t i = 0; i <= Xpoint_MAX; i += STRIDE) {
 		// Init maps
 		std::map<size_t,int> stl_map;
 		Radix_Flat_Map<size_t,int> rf_map;

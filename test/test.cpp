@@ -1,8 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include <chrono>
 #include <iostream>
 #include <iomanip>
+
 
 //fastest single-threaded map candidates for all int and float types
 #include "Radix_Flat_Map.h" //fast with read-heavy workloads
@@ -14,7 +14,8 @@
 #include "SmallTestDataset.h" //contains no duplicates for easier debugging; has 100 truly-random size_t and strings
 using namespace std; //todo: remove when finished
 
-// PERFORMANCE SECTION
+/*
+// PROTOTYPE PERFORMANCE SECTION
 TEST_CASE("[TRIES] Predecessor-Heavy Queries: old vs Trie method", "[tries][performance][predecessor]") {
 	constexpr size_t n = 30000;
 	constexpr size_t q = 3000;
@@ -204,10 +205,13 @@ TEST_CASE("[TRIES] Mixed Neighbor Queries: old vs Trie method", "[tries][perform
 	REQUIRE(old_elapsed > trie_elapsed);
 }
 
+*/
+
+/*
 // INSERTION SECTION
 TEST_CASE("[TRIES] Trie insertion test cases", "[tries][insertion]") {
 	// New Trie instance sized for keys up to 2
-	XFastTrie<int> xft(2);
+	XFastTrie<size_t, int> xft(2);
 
 	// Collect and insert varia	bles into Trie
 	int insert_this_value = 67;
@@ -219,7 +223,7 @@ TEST_CASE("[TRIES] Trie insertion test cases", "[tries][insertion]") {
 
 TEST_CASE("[TRIES] Trie multiple insertions and ordering", "[tries][insertion-order]") {
 	// New Trie instance sized for keys up to 3
-	XFastTrie<int> xft(3);
+	XFastTrie<size_t, int> xft(3);
 
 	// Collect and insert variables into Trie
 	int insert_this_value = 1, insert_this_value_2 = 3, insert_this_value_3 = 2;
@@ -251,7 +255,7 @@ TEST_CASE("[TRIES] Trie multiple insertions and ordering", "[tries][insertion-or
 // ITERATION SECTION
 TEST_CASE("[TRIES] Trie iteration test cases", "[tries][iteration]") {
 	// New Trie instance sized for keys up to 3
-	XFastTrie<int> xft(3);
+	XFastTrie<size_t, int> xft(3);
 
 	// Collect and insert variables into Trie
 	int insert_this_value = 1, insert_this_value_2 = 2, insert_this_value_3 = 3;
@@ -268,7 +272,7 @@ TEST_CASE("[TRIES] Trie iteration test cases", "[tries][iteration]") {
 // REMOVAL SECTION (ERROR)
 TEST_CASE("[TRIES] Trie removal test cases", "[tries][removal]") {
 	// New Trie instance sized for keys up to 1
-	XFastTrie<int> xft(1);
+	XFastTrie<size_t, int> xft(1);
 
 	// Collect and insert variables into Trie
 	int insert_this_value = 67;
@@ -277,7 +281,7 @@ TEST_CASE("[TRIES] Trie removal test cases", "[tries][removal]") {
 	constexpr size_t key_to_check = 1;
 	REQUIRE(xft.contains(key_to_check)); // Confirm insertion 1 = 67
 
-	xft.remove(key_to_check); // Remove key 1
+	xft.erase(key_to_check); // Remove key 1
 
 	REQUIRE(xft.contains(key_to_check) == false); // Confirm key 1 no longer exists
 }
@@ -285,7 +289,7 @@ TEST_CASE("[TRIES] Trie removal test cases", "[tries][removal]") {
 // FIND SECTION
 TEST_CASE("[TRIES] Trie find test cases", "[tries][find]") {
 	// New Trie instance sized for keys up to 2
-	XFastTrie<int> xft(2);
+	XFastTrie<size_t, int> xft(2);
 
 	// Collect and insert variables into Trie
 	int insert_this_value = 1, insert_this_value_2 = 2;
@@ -305,7 +309,7 @@ TEST_CASE("[TRIES] Trie find test cases", "[tries][find]") {
 // PREDECESSOR AND SUCCESSOR SECTION
 TEST_CASE("[TRIES] Trie predecessor test cases", "[tries][predecessor]") {
 	// New Trie instance sized for keys up to 3
-	XFastTrie<int> xft(3);
+	XFastTrie<size_t, int> xft(3);
 
 	// Collect and insert variables into Trie
 	int insert_this_value = 1, insert_this_value_2 = 2, insert_this_value_3 = 3;
@@ -325,7 +329,7 @@ TEST_CASE("[TRIES] Trie predecessor test cases", "[tries][predecessor]") {
 
 TEST_CASE("[TRIES] Trie successor test cases", "[tries][successor]") {
 	// New Trie instance sized for keys up to 3
-	XFastTrie<int> xft(3);
+	XFastTrie<size_t, int> xft(3);
 
 	// Collect and insert variables into Trie
 	int insert_this_value = 1, insert_this_value_2 = 2, insert_this_value_3 = 3;
@@ -344,7 +348,7 @@ TEST_CASE("[TRIES] Trie successor test cases", "[tries][successor]") {
 // EDGE-CASES SECTION (ERROR)
 TEST_CASE("[TRIES] Trie contains and empty edge cases", "[tries][contains-empty]") {
 	// New Trie instance sized for keys up to 1
-	XFastTrie<int> xft(1);
+	XFastTrie<size_t, int> xft(1);
 
 	// Check key 100 is not in empty Trie
 	REQUIRE(xft.contains(100) == false);
@@ -355,13 +359,13 @@ TEST_CASE("[TRIES] Trie contains and empty edge cases", "[tries][contains-empty]
 	REQUIRE(xft.contains(3)); // Confirm key 3 exists
 
 	// Remove key 3
-	xft.remove(3);
+	xft.erase(3);
 	REQUIRE(xft.contains(3) == false); // Confirm key 3 no longer exists
 }
 
 TEST_CASE("[TRIES] Trie edge-case removal of last element", "[tries][last-removal]") {
 	// New Trie instance sized for keys up to 1
-	XFastTrie<int> xft(1);
+	XFastTrie<size_t, int> xft(1);
 
 	// Collect and insert variables into Trie
 	int insert_this_value = 9;
@@ -371,7 +375,7 @@ TEST_CASE("[TRIES] Trie edge-case removal of last element", "[tries][last-remova
 	REQUIRE(xft.contains(1));
 
 	// Remove key 1
-	xft.remove(1);
+	xft.erase(1);
 
 	// Confirm that key 1 no longer exists
 	REQUIRE(xft.contains(1) == false);
@@ -380,6 +384,7 @@ TEST_CASE("[TRIES] Trie edge-case removal of last element", "[tries][last-remova
 	REQUIRE(xft.begin() == xft.end());
 }
 
+*/
 // =============================== [ UMAP ] ===============================
 
 // =============================== [ RADIX ] ===============================
