@@ -1,9 +1,7 @@
+Note: these libraries will install: SFML 2.5.1 and Catch2
 Requirements: 
 
      MinGW (If doesn't compile try downloading version 11.0 instead of latest version).
-
-     SFML 2.5.1
-
         
 How to install:
 
