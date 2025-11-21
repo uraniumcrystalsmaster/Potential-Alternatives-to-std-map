@@ -12,6 +12,7 @@ set(SFML_BUILD_EXAMPLES OFF CACHE INTERNAL "")
 
 ## --- pull in desired version of catch ---
 Include(FetchContent)
+set(BUILD_SHARED_LIBS OFF)
 FetchContent_Declare(
         Catch2
         GIT_REPOSITORY https://github.com/catchorg/Catch2.git
@@ -27,7 +28,7 @@ add_executable(Main
 )
 
 add_executable(Tests
-        test/test.cpp
+        test/test_benchmark.cpp
 )
 
 # --- Add Include Paths to Targets ---
@@ -49,7 +50,9 @@ target_link_libraries(Main PRIVATE
         sfml-system
 )
 
-target_link_libraries(Tests PRIVATE Catch2::Catch2WithMain)
+target_link_libraries(Tests PRIVATE
+        Catch2::Catch2WithMain
+)
 
 # --- OS-Specific DLL Copy (for Windows ONLY) ---
 # This block will be correctly skipped on your Mac.

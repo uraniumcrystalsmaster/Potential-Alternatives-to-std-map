@@ -35,10 +35,24 @@ class Doubly_Linked_Hash_Map{
         // Iterator traits
         using iterator_category = std::bidirectional_iterator_tag;
         using difference_type   = std::ptrdiff_t;
-        using value_type        = Value;
-        using pointer           = Value*;
-        using reference         = Value&;
+        using value_type        = std::pair<const Key, Value>;
 
+        // Proxy: This acts like the 'std::pair&' you get from std::map
+        struct PairProxy {
+          const Key& first;
+          Value& second;
+
+          PairProxy(const Key& k, Value& v) : first(k), second(v) {}
+        };
+
+        // ArrowProxy: This handles the '->' operator
+        struct ArrowProxy {
+          PairProxy proxy;
+          PairProxy* operator->() { return &proxy; }
+        };
+
+        using pointer           = ArrowProxy;
+        using reference         = PairProxy;
     private:
         Doubly_Linked_Hash_Map* map_ptr;
         Key curr_key;
@@ -51,20 +65,20 @@ class Doubly_Linked_Hash_Map{
     public:
         iterator() : map_ptr(nullptr), curr_key(NULL_KEY) {}
 
+        // operator* : Returns the Proxy Object (mimics pair&)
         reference operator*() const {
-            return map_ptr->umap.find(curr_key)->second.value;
+          auto map_iter = map_ptr->umap.find(curr_key);
+          // We bind 'first' to the stable key in the map, 'second' to the value in NodeProps
+          return PairProxy(map_iter->first, map_iter->second.value);
         }
 
+        // operator-> : Returns the ArrowProxy (mimics pair*)
         pointer operator->() const {
-            return &(map_ptr->umap.find(curr_key)->second.value);
+          return ArrowProxy{ **this };
         }
 
         const Key& key() const {
-            return curr_key;
-        }
-
-        Value& value() const {
-            return map_ptr->umap.find(curr_key)->second.value;
+          return curr_key;
         }
 
         // Pre-increment (++it)
@@ -122,8 +136,20 @@ class Doubly_Linked_Hash_Map{
         using iterator_category = std::bidirectional_iterator_tag;
         using difference_type   = std::ptrdiff_t;
         using value_type        = const Value;
-        using pointer           = const Value*;
-        using reference         = const Value&;
+        struct PairProxyConst {
+          const Key& first;
+          const Value& second;
+
+          PairProxyConst(const Key& k, const Value& v) : first(k), second(v) {}
+        };
+
+        struct ArrowProxyConst {
+          PairProxyConst proxy;
+          PairProxyConst* operator->() { return &proxy; }
+        };
+
+        using pointer           = ArrowProxyConst;
+        using reference         = PairProxyConst;
 
     private:
         const Doubly_Linked_Hash_Map* map_ptr;
@@ -143,19 +169,16 @@ class Doubly_Linked_Hash_Map{
             : map_ptr(other.map_ptr), curr_key(other.curr_key) {}
 
         reference operator*() const {
-            return map_ptr->umap.find(curr_key)->second.value;
+          auto map_iter = map_ptr->umap.find(curr_key);
+          return PairProxyConst(map_iter->first, map_iter->second.value);
         }
 
         pointer operator->() const {
-            return &(map_ptr->umap.find(curr_key)->second.value);
+          return ArrowProxyConst{ **this };
         }
 
         const Key& key() const {
             return curr_key;
-        }
-
-        const Value& value() const {
-            return map_ptr->umap.find(curr_key)->second.value;
         }
 
         // Pre-increment (++it)
@@ -217,7 +240,7 @@ class Doubly_Linked_Hash_Map{
       head(NULL_KEY), tail(NULL_KEY)
     {
       Key nav_node = other_Doubly_Linked_Hash_Map.getHead();
-      for(size_t i = 0; i<other_Doubly_Linked_Hash_Map.nodeCount(); i++){
+      for(size_t i = 0; i<other_Doubly_Linked_Hash_Map.size(); i++){
         this->addTail(nav_node,other_Doubly_Linked_Hash_Map.umap.find(nav_node)->second.value);
         nav_node = other_Doubly_Linked_Hash_Map.umap.find(nav_node)->second.next;
       }
@@ -227,7 +250,7 @@ class Doubly_Linked_Hash_Map{
       if(this != &other_Doubly_Linked_Hash_Map){
         clear(); //convert linked list to default
         Key nav_node = other_Doubly_Linked_Hash_Map.getHead();
-        for(size_t i = 0; i<other_Doubly_Linked_Hash_Map.nodeCount(); i++){
+        for(size_t i = 0; i<other_Doubly_Linked_Hash_Map.size(); i++){
           this->addTail(nav_node, other_Doubly_Linked_Hash_Map.umap.find(nav_node)->second.value);
           nav_node = other_Doubly_Linked_Hash_Map.umap.find(nav_node)->second.next;
         }
@@ -257,9 +280,7 @@ class Doubly_Linked_Hash_Map{
     }
 
     //Accessors
-    size_t nodeCount() const {
-      return this->node_count;
-    }
+  size_t size() const { return this->node_count; }
 
     iterator begin() {
         return iterator(this, this->head);
@@ -630,7 +651,7 @@ class Doubly_Linked_Hash_Map{
 
 
     bool operator==(const Doubly_Linked_Hash_Map& other_Doubly_Linked_Hash_Map) const {
-      if(this->node_count != other_Doubly_Linked_Hash_Map.nodeCount()){
+      if(this->node_count != other_Doubly_Linked_Hash_Map.size()){
         return false;
       }
       Key nav_node = this->head;

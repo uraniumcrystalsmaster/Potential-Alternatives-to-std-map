@@ -17,7 +17,7 @@ class Batch_N_Hash_List : public Doubly_Linked_Hash_Map<Key, Value>{
             // Convert umap to vector
             std::vector<std::pair<Key, Value>> sorted_pairs;
             for (auto iter = this->begin(); iter != this->end(); ++iter) {
-                sorted_pairs.push_back({iter.key(), iter.value()});
+                sorted_pairs.push_back({iter->first, iter->second});
             }
 
             // Sort

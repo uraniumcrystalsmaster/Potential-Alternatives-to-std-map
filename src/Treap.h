@@ -16,7 +16,7 @@ class Treap{
             Node* left;
             Node* right;
             size_t priority;
-            Node() : left(nullptr), right(nullptr){}
+            Node() : left(nullptr), right(nullptr), priority(0){}
         };
     private:
         Node* root;
@@ -142,6 +142,17 @@ class Treap{
             using pointer           = Value*;
             using reference         = Value&;
 
+            // Proxy to allow iter->first and iter->second
+            struct Proxy {
+                const Key& first;
+                Value& second;
+                Proxy(const Key& k, Value& v) : first(k), second(v) {}
+            };
+
+            struct ArrowProxy {
+                Proxy p;
+                Proxy* operator->() { return &p; }
+            };
         private:
             Treap* treap_ptr;
             Node* node_ptr;
@@ -155,20 +166,12 @@ class Treap{
         public:
             iterator() : treap_ptr(nullptr), node_ptr(nullptr) {}
 
-            reference operator*() const {
-                return node_ptr->data.second;
+            Proxy operator*() const {
+                return Proxy(node_ptr->data.first, node_ptr->data.second);
             }
 
-            pointer operator->() const {
-                return &(node_ptr->data.second);
-            }
-
-            const Key& key() const {
-                return node_ptr->data.first;
-            }
-
-            Value& value() const {
-                return node_ptr->data.second;
+            ArrowProxy operator->() const {
+                return ArrowProxy{ Proxy(node_ptr->data.first, node_ptr->data.second) };
             }
 
             // Pre-increment (++it)
@@ -232,6 +235,16 @@ class Treap{
             using pointer           = const Value*;
             using reference         = const Value&;
 
+            struct Proxy {
+                const Key& first;
+                const Value& second;
+                Proxy(const Key& k, const Value& v) : first(k), second(v) {}
+            };
+
+            struct ArrowProxy {
+                Proxy p;
+                Proxy* operator->() { return &p; }
+            };
         private:
             const Treap* treap_ptr;
             Node* node_ptr;
@@ -248,20 +261,12 @@ class Treap{
             const_iterator(const iterator& other)
                 : treap_ptr(other.treap_ptr), node_ptr(other.node_ptr) {}
 
-            reference operator*() const {
-                return node_ptr->data.second;
+            Proxy operator*() const {
+                return Proxy(node_ptr->data.first, node_ptr->data.second);
             }
 
-            pointer operator->() const {
-                return &(node_ptr->data.second);
-            }
-
-            const Key& key() const {
-                return node_ptr->data.first;
-            }
-
-            const Value& value() const {
-                return node_ptr->data.second;
+            ArrowProxy operator->() const {
+                return ArrowProxy{ Proxy(node_ptr->data.first, node_ptr->data.second) };
             }
 
             // Pre-increment (++it)
@@ -502,7 +507,7 @@ class Treap{
             }
 
             delete nav_node;
-            this->node_count--;
+            --this->node_count;
             return true;
         }
 

@@ -244,6 +244,17 @@ class AVL_Tree{
             using pointer           = Value*;
             using reference         = Value&;
 
+            struct Proxy {
+                const Key& first;
+                Value& second;
+                Proxy(const Key& k, Value& v) : first(k), second(v) {}
+            };
+
+            struct ArrowProxy {
+                Proxy p;
+                Proxy* operator->() { return &p; }
+            };
+
         private:
             AVL_Tree* AVL_Tree_ptr;
             Node* node_ptr;
@@ -257,20 +268,12 @@ class AVL_Tree{
         public:
             iterator() : AVL_Tree_ptr(nullptr), node_ptr(nullptr) {}
 
-            reference operator*() const {
-                return node_ptr->data.second;
+            Proxy operator*() const {
+                return Proxy(node_ptr->data.first, node_ptr->data.second);
             }
 
-            pointer operator->() const {
-                return &(node_ptr->data.second);
-            }
-
-            const Key& key() const {
-                return node_ptr->data.first;
-            }
-
-            Value& value() const {
-                return node_ptr->data.second;
+            ArrowProxy operator->() const {
+                return ArrowProxy{ Proxy(node_ptr->data.first, node_ptr->data.second) };
             }
 
             // Pre-increment (++it)
@@ -334,6 +337,17 @@ class AVL_Tree{
             using pointer           = const Value*;
             using reference         = const Value&;
 
+            struct Proxy {
+                const Key& first;
+                const Value& second;
+                Proxy(const Key& k, const Value& v) : first(k), second(v) {}
+            };
+
+            struct ArrowProxy {
+                Proxy p;
+                Proxy* operator->() { return &p; }
+            };
+
         private:
             const AVL_Tree* AVL_Tree_ptr;
             Node* node_ptr;
@@ -350,20 +364,12 @@ class AVL_Tree{
             const_iterator(const iterator& other)
                 : AVL_Tree_ptr(other.AVL_Tree_ptr), node_ptr(other.node_ptr) {}
 
-            reference operator*() const {
-                return node_ptr->data.second;
+            Proxy operator*() const {
+                return Proxy(node_ptr->data.first, node_ptr->data.second);
             }
 
-            pointer operator->() const {
-                return &(node_ptr->data.second);
-            }
-
-            const Key& key() const {
-                return node_ptr->data.first;
-            }
-
-            const Value& value() const {
-                return node_ptr->data.second;
+            ArrowProxy operator->() const {
+                return ArrowProxy{ Proxy(node_ptr->data.first, node_ptr->data.second) };
             }
 
             // Pre-increment (++it)
@@ -419,8 +425,7 @@ class AVL_Tree{
             }
         };
     
-        AVL_Tree() : root(nullptr), node_count(0)
-        {}
+        AVL_Tree() : root(nullptr), node_count(0){}
 
         ~AVL_Tree(){
             this->clear();
