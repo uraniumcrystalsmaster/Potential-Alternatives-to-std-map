@@ -20,16 +20,20 @@ void radix_sort(RandomAccessIt begin, RandomAccessIt end, Getter get_value) {
     size_t range_size = std::distance(begin, end);
     if (range_size <= 1) return;
 
+    using Key = std::decay_t<decltype(get_value(*begin))>;
     using Value = typename std::iterator_traits<RandomAccessIt>::value_type;
-    using AnySignedInt = decltype(get_value(*begin));
-    using AnyUnsignedInt = std::make_unsigned_t<AnySignedInt>;
 
-    constexpr AnyUnsignedInt SIGN_BIT_MASK = AnyUnsignedInt(1) << (sizeof(AnySignedInt) * 8 - 1);
+    using AnySignedInt = decltype(get_value(*begin));
+    using AnyUnsignedInt = std::make_unsigned_t<Key>;
+
+    constexpr AnyUnsignedInt SIGN_BIT_MASK = std::is_signed<Key>::value
+        ? (AnyUnsignedInt(1) << (sizeof(Key) * 8 - 1))
+        : 0;
 
     // Convert signed int to unsigned int for correct sorting
     auto get_converted_value = [&](const Value& item) {
         AnySignedInt signed_val = get_value(item);
-        return (AnyUnsignedInt)(signed_val) ^ SIGN_BIT_MASK;
+        return static_cast<AnyUnsignedInt>(signed_val) ^ SIGN_BIT_MASK;
     };
 
     std::vector<Value> buffer(range_size);

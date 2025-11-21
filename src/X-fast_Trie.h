@@ -2,6 +2,7 @@
 #define X_FAST_TRIE_H
 #include <cmath>
 #include <limits>
+#include <type_traits>
 #include <vector>
 //#include <unordered_map>
 #include "Funnel_Hash_Map.h"
@@ -11,43 +12,143 @@ template<typename Key, typename Value>
 class XFastTrie{
 	static_assert(std::is_integral<Key>::value, "Key must be an int or uint type");
 	constexpr static size_t NULL_KEY = std::numeric_limits<size_t>::max();
-	using iter_upper_levels = Funnel_Hash_Map<size_t, size_t>::iterator;
-	using const_iter_upper_levels = Funnel_Hash_Map<size_t, size_t>::const_iterator;
-	//using iter_upper_levels = std::unordered_map<size_t, size_t>::iterator;
-	//using const_iter_upper_levels = std::unordered_map<size_t, size_t>::const_iterator;
-	using iter_lowest_level = typename Doubly_Linked_Hash_Map<size_t, Value>::iterator;
-	using const_iter_lowest_level = typename Doubly_Linked_Hash_Map<size_t, Value>::const_iterator;
-    Doubly_Linked_Hash_Map<size_t,Value> lowest_level;
-    std::vector<Funnel_Hash_Map<size_t,size_t>> upper_levels;
-	//std::vector<std::unordered_map<size_t,size_t>> upper_levels;
-    size_t bit_count;
+	size_t bit_count;
+
+	using MapType = Funnel_Hash_Map<size_t, size_t>;
+	//using MapType = std::unordered_map<size_t, size_t>;
+
+	using iter_upper_levels = typename MapType::iterator;
+	using const_iter_upper_levels = typename MapType::const_iterator;
+
+	using DLL_Type = Doubly_Linked_Hash_Map<size_t, Value>;
+	using iter_lowest_level = typename DLL_Type::iterator;
+	using const_iter_lowest_level = typename DLL_Type::const_iterator;
+
+	DLL_Type lowest_level;
+    std::vector<MapType> upper_levels;
 
 	// These two functions convert between the input key type and a type that the trie can sort effectively
 
-	inline size_t key2Internal(const Key& key) const {
+	static inline size_t key2Internal(const Key& key) {
 		if (std::is_signed<Key>::value) {
-			// Flip the sign bit
 			constexpr size_t sign_bit = size_t(1) << (sizeof(Key) * 8 - 1);
 			return static_cast<size_t>(static_cast<typename std::make_unsigned<Key>::type>(key)) ^ sign_bit;
 		}
-		else {
-			return static_cast<size_t>(key);
-		}
+		return static_cast<size_t>(key);
 	}
 
-	inline Key internal2Key(size_t internal) const {
+	static inline Key internal2Key(size_t internal) {
 		if (std::is_signed<Key>::value) {
-			// Reverse the sign bit flip
 			constexpr size_t sign_bit = size_t(1) << (sizeof(Key) * 8 - 1);
 			internal ^= sign_bit;
 			return static_cast<Key>(internal);
 		}
-		else {
-			return static_cast<Key>(internal);
-		}
+		return static_cast<Key>(internal);
 	}
 
     public:
+		class iterator {
+		public:
+			using iterator_category = std::bidirectional_iterator_tag;
+			using value_type = std::pair<Key, Value>;
+			using difference_type = std::ptrdiff_t;
+			using pointer = void; // Arrow operator is tricky with conversion
+			using reference = value_type;
+
+			// Proxy to support ->first and ->second
+			struct Proxy {
+				Key first;
+				Value& second;
+				Proxy(Key k, Value& v) : first(k), second(v) {}
+			};
+
+			struct ArrowProxy {
+				Proxy p;
+				Proxy* operator->() { return &p; }
+			};
+
+		private:
+			iter_lowest_level inner_it;
+
+		public:
+			iterator(iter_lowest_level it) : inner_it(it) {}
+
+			Proxy operator*() {
+				Key k = XFastTrie::internal2Key(inner_it.key());
+				return Proxy(k, inner_it->second);
+			}
+
+			ArrowProxy operator->() {
+				Key k = XFastTrie::internal2Key(inner_it.key());
+				return ArrowProxy{ Proxy(k, inner_it->second) };
+			}
+
+			// Helper to get Key directly
+			Key key() const {
+				return XFastTrie::internal2Key(inner_it.key());
+			}
+
+			iterator& operator++() { ++inner_it; return *this; }
+			iterator operator++(int) { iterator tmp = *this; ++inner_it; return tmp; }
+			iterator& operator--() { --inner_it; return *this; }
+			iterator operator--(int) { iterator tmp = *this; --inner_it; return tmp; }
+
+			bool operator==(const iterator& other) const { return inner_it == other.inner_it; }
+			bool operator!=(const iterator& other) const { return inner_it != other.inner_it; }
+
+			friend class const_iterator;
+		};
+
+		class const_iterator {
+			public:
+				using iterator_category = std::bidirectional_iterator_tag;
+				using value_type = const std::pair<Key, Value>;
+				using difference_type = std::ptrdiff_t;
+				using pointer = void;
+				using reference = value_type;
+
+				struct Proxy {
+					Key first;
+					const Value& second;
+					Proxy(Key k, const Value& v) : first(k), second(v) {}
+				};
+
+				struct ArrowProxy {
+					Proxy p;
+					Proxy* operator->() { return &p; }
+				};
+
+			private:
+				const_iter_lowest_level inner_it;
+
+			public:
+				const_iterator(const_iter_lowest_level it) : inner_it(it) {}
+
+				// Conversion from non-const iterator
+				const_iterator(const iterator& it) : inner_it(it.inner_it) {}
+
+				Proxy operator*() const {
+					Key k = XFastTrie::internal2Key(inner_it.key());
+					return Proxy(k, inner_it->second);
+				}
+
+				ArrowProxy operator->() const {
+					Key k = XFastTrie::internal2Key(inner_it.key());
+					return ArrowProxy{ Proxy(k, inner_it->second) };
+				}
+
+				Key key() const {
+					return XFastTrie::internal2Key(inner_it.key());
+				}
+
+				const_iterator& operator++() { ++inner_it; return *this; }
+				const_iterator operator++(int) { const_iterator tmp = *this; ++inner_it; return tmp; }
+				const_iterator& operator--() { --inner_it; return *this; }
+				const_iterator operator--(int) { const_iterator tmp = *this; --inner_it; return tmp; }
+
+				bool operator==(const const_iterator& other) const { return inner_it == other.inner_it; }
+				bool operator!=(const const_iterator& other) const { return inner_it != other.inner_it; }
+		};
 		explicit XFastTrie(size_t N) : lowest_level(N), bit_count(sizeof(Key) * 8) {
             upper_levels.reserve(bit_count-1);
             for (size_t i = 0; i < bit_count - 1; i++) {
@@ -197,12 +298,12 @@ class XFastTrie{
 			return true;
 		}
 
-		iter_lowest_level find(const Key& key){
-			return lowest_level.find(key2Internal(key));
+		iterator find(const Key& key){
+			return iterator(lowest_level.find(key2Internal(key)));
 		}
 
-		const_iter_lowest_level find(const Key& key) const{
-			return lowest_level.find(key2Internal(key));
+		const_iterator find(const Key& key) const{
+			return const_iterator(lowest_level.find(key2Internal(key)));
 		}
 
 		bool contains(const Key& key){
@@ -213,8 +314,15 @@ class XFastTrie{
 			return lowest_level.find(key2Internal(key)) != lowest_level.end();
         }
 
+		size_t size() const {
+			return lowest_level.size();
+		}
+
+		bool empty() const {
+			return lowest_level.empty();
+		}
+
 	private:
-		// Internal predecessor that works with size_t keys
 		iter_lowest_level predecessorInternal(const size_t& key) {
           auto node = lowest_level.find(key);
           if(node != lowest_level.end()){
@@ -222,7 +330,6 @@ class XFastTrie{
              return std::prev(node);
           }
 
-          // Key not in list, find its logical position via trie
 			size_t level_index = findLongestCommonPrefixLevelIndex(key);
 			if (level_index == NULL_KEY) {
 				return lowest_level.end();
@@ -353,21 +460,20 @@ class XFastTrie{
        }
 
 	public:
-		// Public predecessor/successor that work with Key
-		iter_lowest_level predecessor(const Key& key) {
-			return predecessorInternal(key2Internal(key));
+		iterator predecessor(const Key& key) {
+			return iterator(predecessorInternal(key2Internal(key)));
 		}
 
-		const_iter_lowest_level predecessor(const Key& key) const {
-			return predecessorInternal(key2Internal(key));
+		const_iterator predecessor(const Key& key) const {
+			return const_iterator(predecessorInternal(key2Internal(key)));
 		}
 
-		iter_lowest_level successor(const Key& key) {
-			return successorInternal(key2Internal(key));
+		iterator successor(const Key& key) {
+			return iterator(successorInternal(key2Internal(key)));
 		}
 
-		const_iter_lowest_level successor(const Key& key) const {
-			return successorInternal(key2Internal(key));
+		const_iterator successor(const Key& key) const {
+			return const_iterator(successorInternal(key2Internal(key)));
 		}
 
         size_t findLongestCommonPrefixLevelIndex(const size_t& key){
@@ -408,20 +514,28 @@ class XFastTrie{
             return target_prefix_level_i;
         }
 
-		iter_lowest_level begin() {
-			return lowest_level.begin();
+		iterator begin() {
+			return iterator(lowest_level.begin());
 		}
 
-		const_iter_lowest_level cbegin() const {
-			return lowest_level.cbegin();
+		iterator end() {
+			return iterator(lowest_level.end());
 		}
 
-		iter_lowest_level end() {
-			return lowest_level.end();
+		const_iterator begin() const {
+			return const_iterator(lowest_level.begin());
 		}
 
-		const_iter_lowest_level cend() const {
-			return lowest_level.cend();
+		const_iterator end() const {
+			return const_iterator(lowest_level.end());
+		}
+
+		const_iterator cbegin() const {
+			return const_iterator(lowest_level.cbegin());
+		}
+
+		const_iterator cend() const {
+			return const_iterator(lowest_level.cend());
 		}
 };
 

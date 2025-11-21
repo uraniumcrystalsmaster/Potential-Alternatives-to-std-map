@@ -31,8 +31,8 @@ sf::VertexArray createPlot(const std::vector<sf::Vector2f>& points, float max_x,
 	return plot;
 }
 
-constexpr size_t Xpoint_MAX = 10;
-constexpr size_t STRIDE = Xpoint_MAX/1;
+constexpr size_t Xpoint_MAX = 1000;
+constexpr size_t STRIDE = Xpoint_MAX/200;
 
 enum class QueryType {
 	INSERT,
@@ -522,6 +522,7 @@ void runBenchmarks(QueryType queryType,
 					++hl_batch_end;
 				}
 				start = std::chrono::high_resolution_clock::now();
+				bnhl.sort_keys();
 				for(auto iter = bnhl.begin(); iter != hl_batch_end; ++iter) {}
 				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
 				bnhl_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
@@ -532,6 +533,7 @@ void runBenchmarks(QueryType queryType,
 					++hl_end;
 				}
 				start = std::chrono::high_resolution_clock::now();
+				hash_list.sort_keys();
 				for(auto iter = hash_list.begin(); iter != hl_end; ++iter) {}
 				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
 				hash_list_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
