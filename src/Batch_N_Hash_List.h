@@ -21,7 +21,7 @@ class Batch_N_Hash_List : public Doubly_Linked_Hash_Map<Key, Value>{
             }
 
             // Sort
-            radix_sort(sorted_pairs.begin(),sorted_pairs.end(), [](const auto& p) { return p.first; }); // <-- FIX (add lambda)
+            radix_sort(sorted_pairs.begin(),sorted_pairs.end(), [](const auto& p) { return p.first; });
 
             // Convert vector to umap
             rebuild_sorted_links(sorted_pairs);
@@ -56,7 +56,7 @@ class Batch_N_Hash_List : public Doubly_Linked_Hash_Map<Key, Value>{
             size_t N = sorted_pairs.size();
             this->head = sorted_pairs.front().first;
             this->tail = sorted_pairs.back().first;
-            this->node_count = N; // <-- BUG FIX: Don't set count to 0
+            this->node_count = N;
 
             for (size_t i = 0; i < N; ++i) {
                 Key current_key = sorted_pairs[i].first;
@@ -66,16 +66,16 @@ class Batch_N_Hash_List : public Doubly_Linked_Hash_Map<Key, Value>{
 
                 if (i < N - 1) {
                     Key next_key = sorted_pairs[i + 1].first;
-                    node.next = next_key; // <-- FIX
+                    node.next = next_key;
                 } else {
-                    node.next = NULL_KEY; // <-- FIX
+                    node.next = NULL_KEY;
                 }
 
                 if (i > 0) {
                     Key prev_key = sorted_pairs[i - 1].first;
-                    node.prev = prev_key; // <-- FIX
+                    node.prev = prev_key;
                 } else {
-                    node.prev = NULL_KEY; // <-- FIX
+                    node.prev = NULL_KEY;
                 }
             }
         }

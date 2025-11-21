@@ -9,7 +9,8 @@
 
 //fastest single-threaded map candidates for all int types
 #include "Radix_Flat_Map.h" //should be fast with read-heavy workloads
-#include "Batch_N_Hash_List.h" //should be fast with write-heavy workloads or batch lookup only
+//#include "Batch_N_Hash_List.h" //should be fast with write-heavy workloads or batch lookup only - O(1) find and delete
+#include "Batch_List.h" //should be fast with write-heavy workloads or batch lookup only - O(N) find and delete
 #include <map> //should theoretically be fast for insertion and deletion
 #include "X-fast_Trie.h" //theoretically the fastest
 #include "AVL_Tree.h" //should theoretically be fast for lookup, successor, and predecessor
@@ -31,8 +32,8 @@ sf::VertexArray createPlot(const std::vector<sf::Vector2f>& points, float max_x,
 	return plot;
 }
 
-constexpr size_t Xpoint_MAX = 1000;
-constexpr size_t STRIDE = Xpoint_MAX/200;
+constexpr size_t Xpoint_MAX = 100;
+constexpr size_t STRIDE = Xpoint_MAX/20;
 
 enum class QueryType {
 	INSERT,
@@ -59,8 +60,10 @@ void runBenchmarks(QueryType queryType,
 				   std::vector<sf::Vector2f>& stl_points,
 				   std::vector<sf::Vector2f>& rf_points,
 				   std::vector<sf::Vector2f>& rf_batch_points,
-				   std::vector<sf::Vector2f>& bnhl_points,
-				   std::vector<sf::Vector2f>& hash_list_points,
+				   std::vector<sf::Vector2f>& batch_list_points,
+				   std::vector<sf::Vector2f>& list_points,
+				   //std::vector<sf::Vector2f>& bnhl_points,
+				   //std::vector<sf::Vector2f>& hash_list_points,
 				   std::vector<sf::Vector2f>& xft_points,
 				   std::vector<sf::Vector2f>& avl_points,
 				   std::vector<sf::Vector2f>& hash_avl_points,
@@ -70,8 +73,10 @@ void runBenchmarks(QueryType queryType,
 	stl_points.clear();
 	rf_points.clear();
 	rf_batch_points.clear();
-	bnhl_points.clear();
-	hash_list_points.clear();
+	batch_list_points.clear();
+	list_points.clear();
+	//bnhl_points.clear();
+	//hash_list_points.clear();
 	xft_points.clear();
 	avl_points.clear();
 	hash_avl_points.clear();
@@ -84,8 +89,10 @@ void runBenchmarks(QueryType queryType,
 		rf_map.reserve(i);
 		Radix_Flat_Map<size_t,int> rf_batch_map;
 		rf_batch_map.reserve(i);
-		Batch_N_Hash_List<size_t,int> bnhl(i);
-		Batch_N_Hash_List<size_t,int> hash_list(i);
+		Batch_List<size_t,int> batch_list;
+		Batch_List<size_t,int> list;
+		//Batch_N_Hash_List<size_t,int> bnhl(i);
+		//Batch_N_Hash_List<size_t,int> hash_list(i);
 		XFastTrie<size_t,int> xft(i);
 		AVL_Tree<size_t,int> avl_tree;
 		Hash_Map_AVL_Tree<size_t,int> hash_avl_tree(i);
@@ -98,9 +105,8 @@ void runBenchmarks(QueryType queryType,
 		if (queryType != QueryType::INSERT) {
 			for(size_t j = 0; j < i; j++) {
 				stl_map.emplace(rand_dataset.random_size_ts[j], rand_dataset.random_ints[j]);
-				rf_map.insert(rand_dataset.random_size_ts[j], rand_dataset.random_ints[j]);
-				bnhl.addHead(rand_dataset.random_size_ts[j], rand_dataset.random_ints[j]);
-				hash_list.addHead(rand_dataset.random_size_ts[j], rand_dataset.random_ints[j]);
+				//bnhl.addHead(rand_dataset.random_size_ts[j], rand_dataset.random_ints[j]);
+				//hash_list.addHead(rand_dataset.random_size_ts[j], rand_dataset.random_ints[j]);
 				xft.insert(rand_dataset.random_size_ts[j], rand_dataset.random_ints[j]);
 				avl_tree.insert(rand_dataset.random_size_ts[j], rand_dataset.random_ints[j]);
 				hash_avl_tree.insert(rand_dataset.random_size_ts[j], rand_dataset.random_ints[j]);
@@ -112,7 +118,10 @@ void runBenchmarks(QueryType queryType,
 			for(size_t j = 0; j < i; j++) {
 				batch_data.emplace_back(rand_dataset.random_size_ts[j], rand_dataset.random_ints[j]);
 			}
+			batch_list.batch_insert(batch_data.begin(), batch_data.end());
+			list.batch_insert(batch_data.begin(), batch_data.end());
 			rf_batch_map.insert_batch(batch_data.begin(), batch_data.end());
+			rf_map.insert_batch(batch_data.begin(), batch_data.end());
 		}
 
 		// Create a new dataset with different seed for queries
@@ -141,16 +150,31 @@ void runBenchmarks(QueryType queryType,
 				rf_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
 
 				// radix flat map BATCH insertion (orange)
-				start = std::chrono::high_resolution_clock::now();
 				std::vector<std::pair<size_t, int>> batch_data;
 				batch_data.reserve(i);
 				for(size_t j = 0; j < i; j++) {
 					batch_data.emplace_back(rand_dataset.random_size_ts[j], rand_dataset.random_ints[j]);
 				}
+				start = std::chrono::high_resolution_clock::now();
 				rf_batch_map.insert_batch(batch_data.begin(), batch_data.end());
 				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
 				rf_batch_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
 
+				// batch list (cyan)
+				start = std::chrono::high_resolution_clock::now();
+				batch_list.batch_insert(batch_data.begin(), batch_data.end());
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				batch_list_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// list (light grey)
+				start = std::chrono::high_resolution_clock::now();
+				for(size_t j = 0; j < i; j++) {
+					list.insert(rand_dataset.random_size_ts[j],rand_dataset.random_ints[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				list_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				/*
 				// batch N Hash list (cyan)
 				start = std::chrono::high_resolution_clock::now();
 				for(size_t j = 0; j < i; j++) {
@@ -167,6 +191,7 @@ void runBenchmarks(QueryType queryType,
 				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
 				hash_list_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
 
+				*/
 				// X-fast trie (yellow)
 				start = std::chrono::high_resolution_clock::now();
 				for(size_t j = 0; j < i; j++) {
@@ -226,6 +251,21 @@ void runBenchmarks(QueryType queryType,
 				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
 				rf_batch_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
 
+				// batch list
+				start = std::chrono::high_resolution_clock::now();
+				batch_list.batch_find(query_dataset.random_size_ts);
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				batch_list_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// list
+				start = std::chrono::high_resolution_clock::now();
+				for(size_t j = 0; j < i; j++) {
+					list.find(query_dataset.random_size_ts[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				list_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				/*
 				// batch N Hash list
 				start = std::chrono::high_resolution_clock::now();
 				for(size_t j = 0; j < i; j++) {
@@ -239,8 +279,10 @@ void runBenchmarks(QueryType queryType,
 				for(size_t j = 0; j < i; j++) {
 					hash_list.find(query_dataset.random_size_ts[j]);
 				}
+
 				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
 				hash_list_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+				*/
 
 				// X-fast trie
 				start = std::chrono::high_resolution_clock::now();
@@ -301,6 +343,21 @@ void runBenchmarks(QueryType queryType,
 				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
 				rf_batch_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
 
+				// batch list (uses batch operation)
+				start = std::chrono::high_resolution_clock::now();
+				batch_list.batch_successors(query_dataset.random_size_ts);
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				batch_list_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// list (uses individual queries)
+				start = std::chrono::high_resolution_clock::now();
+				for(size_t j = 0; j < i; j++) {
+					list.successor(query_dataset.random_size_ts[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				list_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				/*
 				// batch N Hash list (uses batch operation)
 				start = std::chrono::high_resolution_clock::now();
 				bnhl.batch_successors(query_dataset.random_size_ts);
@@ -312,6 +369,7 @@ void runBenchmarks(QueryType queryType,
 				hash_list.successor(query_dataset.random_size_ts[0]);
 				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
 				hash_list_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed*(double)(i)));
+				*/
 
 				// X-fast trie
 				start = std::chrono::high_resolution_clock::now();
@@ -372,6 +430,21 @@ void runBenchmarks(QueryType queryType,
 				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
 				rf_batch_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
 
+				// batch list (uses batch operation)
+				start = std::chrono::high_resolution_clock::now();
+				batch_list.batch_predecessors(query_dataset.random_size_ts);
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				batch_list_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// list (uses individual queries)
+				start = std::chrono::high_resolution_clock::now();
+				for(size_t j = 0; j < i; j++) {
+					list.predecessor(query_dataset.random_size_ts[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				list_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				/*
 				// batch N Hash list (uses batch operation)
 				start = std::chrono::high_resolution_clock::now();
 				bnhl.batch_predecessors(query_dataset.random_size_ts);
@@ -383,6 +456,7 @@ void runBenchmarks(QueryType queryType,
 				hash_list.predecessor(query_dataset.random_size_ts[0]);
 				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
 				hash_list_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed*(double)(i)));
+				*/
 
 				// X-fast trie
 				start = std::chrono::high_resolution_clock::now();
@@ -441,6 +515,20 @@ void runBenchmarks(QueryType queryType,
 				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
 				rf_batch_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
 
+				// batch list
+				start = std::chrono::high_resolution_clock::now();
+				batch_list.batch_erase(query_dataset.random_size_ts);
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				batch_list_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// list
+				start = std::chrono::high_resolution_clock::now();
+				for(size_t j = 0; j < i; j++) {
+					list.erase_key(query_dataset.random_size_ts[j]);
+				}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				list_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+				/*
 				// batch N Hash list
 				start = std::chrono::high_resolution_clock::now();
 				for(size_t j = 0; j < i; j++) {
@@ -456,6 +544,7 @@ void runBenchmarks(QueryType queryType,
 				}
 				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
 				hash_list_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+				*/
 
 				// X-fast trie
 				start = std::chrono::high_resolution_clock::now();
@@ -516,6 +605,27 @@ void runBenchmarks(QueryType queryType,
 				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
 				rf_batch_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
 
+				// batch list
+				auto batch_list_end = batch_list.begin();
+				for(size_t j = 0; j < i; j++) {
+					++batch_list_end;
+				}
+				start = std::chrono::high_resolution_clock::now();
+				for(auto iter = batch_list.begin(); iter != batch_list_end; ++iter) {}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				batch_list_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				// list
+				auto list_end = list.begin();
+				for(size_t j = 0; j < i; j++) {
+					++list_end;
+				}
+				start = std::chrono::high_resolution_clock::now();
+				for(auto iter = list.begin(); iter != list_end; ++iter) {}
+				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
+				list_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+
+				/*
 				// batch N Hash list
 				auto hl_batch_end = bnhl.begin();
 				for(size_t j = 0; j < i; j++) {
@@ -537,6 +647,7 @@ void runBenchmarks(QueryType queryType,
 				for(auto iter = hash_list.begin(); iter != hl_end; ++iter) {}
 				elapsed = std::chrono::duration<double>(std::chrono::high_resolution_clock::now() - start).count();
 				hash_list_points.emplace_back(static_cast<float>(i), static_cast<float>(elapsed));
+				*/
 
 				// X-fast trie
 				auto xft_end = xft.begin();
@@ -588,8 +699,10 @@ int main() {
 	std::map<QueryType, std::vector<sf::Vector2f>> stl_results;
 	std::map<QueryType, std::vector<sf::Vector2f>> rf_results;
 	std::map<QueryType, std::vector<sf::Vector2f>> rf_batch_results;
-	std::map<QueryType, std::vector<sf::Vector2f>> bnhl_results;
-	std::map<QueryType, std::vector<sf::Vector2f>> hash_list_results;
+	std::map<QueryType, std::vector<sf::Vector2f>> batch_list_results;
+	std::map<QueryType, std::vector<sf::Vector2f>> list_results;
+	//std::map<QueryType, std::vector<sf::Vector2f>> bnhl_results;
+	//std::map<QueryType, std::vector<sf::Vector2f>> hash_list_results;
 	std::map<QueryType, std::vector<sf::Vector2f>> xft_results;
 	std::map<QueryType, std::vector<sf::Vector2f>> avl_results;
 	std::map<QueryType, std::vector<sf::Vector2f>> hash_avl_results;
@@ -608,8 +721,10 @@ int main() {
 					  stl_results[queryType],
 					  rf_results[queryType],
 					  rf_batch_results[queryType],
-					  bnhl_results[queryType],
-					  hash_list_results[queryType],
+					  batch_list_results[queryType],
+					  list_results[queryType],
+					  //bnhl_results[queryType],
+					  //hash_list_results[queryType],
 					  xft_results[queryType],
 					  avl_results[queryType],
 					  hash_avl_results[queryType],
@@ -625,8 +740,10 @@ int main() {
 	std::vector<sf::Vector2f> stl_points;
 	std::vector<sf::Vector2f> rf_points;
 	std::vector<sf::Vector2f> rf_batch_points;
-	std::vector<sf::Vector2f> bnhl_points;
-	std::vector<sf::Vector2f> hash_list_points;
+	std::vector<sf::Vector2f> batch_list_points;
+	std::vector<sf::Vector2f> list_points;
+	//std::vector<sf::Vector2f> bnhl_points;
+	//std::vector<sf::Vector2f> hash_list_points;
 	std::vector<sf::Vector2f> xft_points;
 	std::vector<sf::Vector2f> avl_points;
 	std::vector<sf::Vector2f> hash_avl_points;
@@ -636,8 +753,10 @@ int main() {
 		stl_points.clear();
 		rf_points.clear();
 		rf_batch_points.clear();
-		bnhl_points.clear();
-		hash_list_points.clear();
+		batch_list_points.clear();
+		list_points.clear();
+		//bnhl_points.clear();
+		//hash_list_points.clear();
 		xft_points.clear();
 		avl_points.clear();
 		hash_avl_points.clear();
@@ -646,7 +765,9 @@ int main() {
 		size_t numPoints = stl_results[QueryType::INSERT].size();
 
 		for (size_t i = 0; i < numPoints; ++i) {
-			float stl_sum = 0, rf_sum = 0, rf_batch_sum = 0, bnhl_sum = 0, hash_list_sum = 0;
+			float stl_sum = 0, rf_sum = 0, rf_batch_sum = 0;
+			float batch_list_sum = 0, list_sum = 0;
+			//float bnhl_sum = 0, hash_list_sum = 0;
 			float xft_sum = 0, avl_sum = 0, hash_avl_sum = 0, treap_sum = 0;
 			float x_value = 0;
 
@@ -655,8 +776,10 @@ int main() {
 					stl_sum += stl_results[qt][i].y;
 					rf_sum += rf_results[qt][i].y;
 					rf_batch_sum += rf_batch_results[qt][i].y;
-					bnhl_sum += bnhl_results[qt][i].y;
-					hash_list_sum += hash_list_results[qt][i].y;
+					batch_list_sum += batch_list_results[qt][i].y;
+					list_sum += list_results[qt][i].y;
+					//bnhl_sum += bnhl_results[qt][i].y;
+					//hash_list_sum += hash_list_results[qt][i].y;
 					xft_sum += xft_results[qt][i].y;
 					avl_sum += avl_results[qt][i].y;
 					hash_avl_sum += hash_avl_results[qt][i].y;
@@ -668,8 +791,10 @@ int main() {
 			stl_points.emplace_back(x_value, stl_sum);
 			rf_points.emplace_back(x_value, rf_sum);
 			rf_batch_points.emplace_back(x_value, rf_batch_sum);
-			bnhl_points.emplace_back(x_value, bnhl_sum);
-			hash_list_points.emplace_back(x_value, hash_list_sum);
+			batch_list_points.emplace_back(x_value, batch_list_sum);
+			list_points.emplace_back(x_value, list_sum);
+			//bnhl_points.emplace_back(x_value, bnhl_sum);
+			//hash_list_points.emplace_back(x_value, hash_list_sum);
 			xft_points.emplace_back(x_value, xft_sum);
 			avl_points.emplace_back(x_value, avl_sum);
 			hash_avl_points.emplace_back(x_value, hash_avl_sum);
@@ -716,8 +841,10 @@ int main() {
 	sf::VertexArray plot_stl;
 	sf::VertexArray plot_rf;
 	sf::VertexArray plot_rf_batch;
-	sf::VertexArray plot_bnhl;
-	sf::VertexArray plot_hash_list;
+	sf::VertexArray plot_batch_list;
+	sf::VertexArray plot_list;
+	//sf::VertexArray plot_bnhl;
+	//sf::VertexArray plot_hash_list;
 	sf::VertexArray plot_xft;
 	sf::VertexArray plot_avl;
 	sf::VertexArray plot_hash_avl;
@@ -727,8 +854,10 @@ int main() {
 		{&stl_points, sf::Color::Red, true, "Red: std::map (red-black tree)", &plot_stl},
 		{&rf_points, sf::Color::Green, true, "Green: Radix_Flat_Map (No batching)", &plot_rf},
 		{&rf_batch_points, sf::Color(255, 165, 0), true, "Orange: Radix_Flat_Map (Batch = N)", &plot_rf_batch},
-		{&bnhl_points, sf::Color::Cyan, true, "Cyan: Batch_N_Hash_List (Batch = N)", &plot_bnhl},
-		{&hash_list_points, sf::Color(180, 180, 180), true, "Light Grey: Batch_N_Hash_List (No batching)", &plot_hash_list},
+		{&batch_list_points, sf::Color::Cyan, true, "Cyan: Batch_List (Batch = N)", &plot_batch_list},
+		{&list_points, sf::Color(180, 180, 180), true, "Light Grey: List (No batching)", &plot_list},
+		//{&bnhl_points, sf::Color::Cyan, true, "Cyan: Batch_N_Hash_List (Batch = N)", &plot_bnhl},
+		//{&hash_list_points, sf::Color(180, 180, 180), true, "Light Grey: Batch_N_Hash_List (No batching)", &plot_hash_list},
 		{&xft_points, sf::Color::Yellow, true, "Yellow: XFastTrie", &plot_xft},
 		{&avl_points, sf::Color(128, 128, 128), true, "Grey: AVL_Tree", &plot_avl},
 		{&hash_avl_points, sf::Color::Magenta, true, "Magenta: Hash_Map_AVL_Tree", &plot_hash_avl},
@@ -792,7 +921,7 @@ int main() {
 
 	// Create Labels
 	sf::Text title, y_label, x_label, max_y_label, max_x_label;
-	sf::Text legend_label;  // New label for legend
+	sf::Text legend_label;
 	std::vector<sf::Text> legend_texts;
 	std::vector<sf::CircleShape> legend_circles;
 
